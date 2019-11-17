@@ -510,6 +510,11 @@ bool process( char c )
 //
 int main( int argc, char* argv[] )
 {
+  if ( argc < 2 ) {
+    std::cerr << "ERROR: missing argument\n";
+    return 1;
+  }
+  
   size_t i = 0U;
   size_t in_length = std::strlen( argv[1] );
   bool process_ok = false;
