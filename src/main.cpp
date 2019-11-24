@@ -238,7 +238,7 @@ namespace {
 
   
 
-  void update_stacks_with_operator(
+  bool update_stacks_with_operator(
 				   std::vector<item_data_type> &expression
 				   ,std::vector<item_data_type> &operator_stack
 				   ,std::vector<size_t>         &lparens
@@ -258,6 +258,9 @@ namespace {
       //std::cout << "DEBUG: flushing operator stack to nearest lparens\n";
 
       // TODO. error if unbalanced parenthesis
+      if ( lparens.empty() ) {
+	return false;
+      }
       
       while ( operator_stack.size() != lparens.back() ) {
 	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into expression stack\n";
@@ -267,11 +270,6 @@ namespace {
 
       //std::cout << "DEBUG: popping lparens stack\n";
       lparens.pop_back();
-
-    }
-    else if ( item_data.id == ITEM_ID_TYPE_OP_COMMA ) {
-
-      // do nothing with commas
 
     }
     else {
@@ -284,9 +282,13 @@ namespace {
 	operator_stack.pop_back();
       }
 
-      //std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
-      operator_stack.emplace_back( item_data );
+      if ( item_data.id != ITEM_ID_TYPE_OP_COMMA ) {
+	//std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
+	operator_stack.emplace_back( item_data );
+      }
     }
+
+    return true;
   }
 
   
@@ -299,7 +301,6 @@ namespace {
   std::vector<size_t>          lparens_;
   std::vector<item_data_type>  operator_stack_;
   parse_mode_type              parse_mode_ = PARSE_MODE_START;
-  size_t                       parser_parens_depth_ = 0U;
   std::vector<token_type>      tokens_;
   size_t                       tokens_parsed_ = 0U;
 }
@@ -623,7 +624,6 @@ bool process( char c )
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
 	  update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_LPARENS ) );
 	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	  ++parser_parens_depth_;
 	}
 	else {
 	  parse_mode_ = PARSE_MODE_ERROR;
@@ -658,7 +658,6 @@ bool process( char c )
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
 	  update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_LPARENS ) );
 	  // stay in this parse mode
-	  ++parser_parens_depth_;
 	}
 	// TODO. allow RPARENS here? Tricky...
 	//  need to allow for (), but not (-)
@@ -693,13 +692,8 @@ bool process( char c )
 	  }
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	  update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_RPARENS ) );
-	  if ( parser_parens_depth_ == 0U ) {
+	  if ( !update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_RPARENS ) ) ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  else {
-	    // stay in this parse mode
-	    --parser_parens_depth_;
 	  }
 	}
 	else {
@@ -726,16 +720,18 @@ bool process( char c )
       std::cerr << "ERROR: parse not terminated correctly\n";
       return false;
     }
-    else if ( parser_parens_depth_ != 0U ) {
-      std::cerr << "ERROR: mismatched parens\n";
-      return false;
-    }
   }
 
 
   // Finalize the expression
   //
   if ( c == '\0' ) {
+
+    if ( !lparens_.empty() ) {
+      std::cerr << "ERROR: unbalanced parenthesis\n";
+      return false;
+    }
+    
     while ( !operator_stack_.empty() ) {
       //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into expression stack\n";
       expression_.emplace_back( operator_stack_.back() );
@@ -766,19 +762,21 @@ int main( int argc, char* argv[] )
     // TODO. create an explicit "finalize" call
     //  (which underneath the covers senda a NULL char to process())
     //
-    process( '\0' );
+    if ( process( '\0' ) ) {
 
-    // print out expression to be evaluated
-    //
-    for ( std::vector<item_data_type>::iterator iter( expression_.begin() )
-	    ; iter != expression_.end()
-	    ; ++iter ) {
-      if ( iter->id == ITEM_ID_TYPE_CONSTANT ) {
-	std::cout << iter->value << "\n";
+      // print out expression to be evaluated
+      //
+      for ( std::vector<item_data_type>::iterator iter( expression_.begin() )
+	      ; iter != expression_.end()
+	      ; ++iter ) {
+	if ( iter->id == ITEM_ID_TYPE_CONSTANT ) {
+	  std::cout << iter->value << "\n";
+	}
+	else {
+	  std::cout << operator_data[ iter->id ].text << "\n";
+	}
       }
-      else {
-	std::cout << operator_data[ iter->id ].text << "\n";
-      }
+      
     }
   }
 
