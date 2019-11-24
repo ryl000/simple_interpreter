@@ -162,23 +162,23 @@ namespace {
     { 0, "(constant)" }
     ,{ 0, "(addr)" }
    
-    ,{ 8, "!" }
-    ,{ 8, "neg" }
+    ,{ 10, "!" }
+    ,{ 10, "neg" }
    
-    ,{ 6, "+" }
-    ,{ 6, "-" }
+    ,{ 8, "+" }
+    ,{ 8, "-" }
 
-    ,{ 7, "/" }
-    ,{ 7, "*" }
+    ,{ 9, "/" }
+    ,{ 9, "*" }
    
-    ,{ 5, "==" }
-    ,{ 5, "!=" }
-    ,{ 5, ">=" }
-    ,{ 5, ">" }
-    ,{ 5, "<=" }
-    ,{ 5, "<" }
+    ,{ 6, "==" }
+    ,{ 6, "!=" }
+    ,{ 7, ">=" }
+    ,{ 7, ">" }
+    ,{ 7, "<=" }
+    ,{ 7, "<" }
    
-    ,{ 4, "&&" }
+    ,{ 5, "&&" }
     ,{ 4, "||" }
    
     ,{ 3, "=" }
@@ -257,7 +257,6 @@ namespace {
 
       //std::cout << "DEBUG: flushing operator stack to nearest lparens\n";
 
-      // TODO. error if unbalanced parenthesis
       if ( lparens.empty() ) {
 	return false;
       }
@@ -295,9 +294,11 @@ namespace {
 
   // Lexer/parser state
   //
+  size_t                       char_no_ = 0U;
   std::string                  current_token_;
   std::vector<item_data_type>  expression_;
   lex_mode_type                lex_mode_ = LEX_MODE_START;
+  size_t                       line_no_ = 0U;
   std::vector<size_t>          lparens_;
   std::vector<item_data_type>  operator_stack_;
   parse_mode_type              parse_mode_ = PARSE_MODE_START;
@@ -309,6 +310,8 @@ namespace {
 
 bool process( char c )
 {
+  ++char_no_;
+  
   // Stage 1: Tokenize
   //
   
@@ -334,6 +337,9 @@ bool process( char c )
       }
       else if ( std::isspace( c ) ) {
 	// skip, and stay in this mode
+	if ( c == '\n' ) {
+	  ++line_no_;
+	};
       }
       else if ( c == '+' ) {
 	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );
@@ -743,6 +749,183 @@ bool process( char c )
 }
 
 
+bool evaluate( const std::vector<item_data_type> &expression )
+{
+  // TODO. short-circuit on && and ||
+  //
+  
+  std::vector<double> evaluation_stack;
+
+  for ( std::vector<item_data_type>::const_iterator iter = expression.begin()
+	  ; iter != expression.end()
+	  ; ++iter ) {
+    switch ( iter->id ) {
+    case ITEM_ID_TYPE_CONSTANT:
+      evaluation_stack.push_back( iter->value );
+      break;
+
+    case ITEM_ID_TYPE_ADDRESS:
+      // TODO.
+      break;
+
+    case ITEM_ID_TYPE_OP_NOT:
+      if ( evaluation_stack.empty() ) {
+	return false;
+      }
+      evaluation_stack.back() = ((evaluation_stack.back() == 0.0) ? 1.0 : 0.0);
+      break;
+
+    case ITEM_ID_TYPE_OP_NEGATE:
+      if ( evaluation_stack.empty() ) {
+	return false;
+      }
+      evaluation_stack.back() = -1.0 * (evaluation_stack.back());
+      break;
+
+    case ITEM_ID_TYPE_OP_ADD:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	double result = *(evaluation_stack.rbegin() + 1) + *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_SUBTRACT:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	double result = *(evaluation_stack.rbegin() + 1) - *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_DIVIDE:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	// TODO. check for div-by-zero
+	double result = *(evaluation_stack.rbegin() + 1) / *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_MULTIPLY:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	double result = *(evaluation_stack.rbegin() + 1) * *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_EQ:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) == *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_NEQ:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) != *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_GE:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) >= *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_GT:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) > *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_LE:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) <= *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_LT:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = *(evaluation_stack.rbegin() + 1) < *(evaluation_stack.rbegin());
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_AND:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) && (*(evaluation_stack.rbegin()) != 0.0);
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    case ITEM_ID_TYPE_OP_OR:
+      if ( evaluation_stack.size() < 2 ) {
+	return false;
+      }
+      {
+	bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) || (*(evaluation_stack.rbegin()) != 0.0);
+	evaluation_stack.pop_back();
+	evaluation_stack.back() = result ? 1.0 : 0.0;
+      }
+      break;
+
+    }
+  }
+
+  if ( !evaluation_stack.empty() ) {
+    std::cout << " => " << evaluation_stack.back() << "\n";
+  }
+
+  return true;
+}
+
+
 // test driver
 //
 int main( int argc, char* argv[] )
@@ -758,26 +941,31 @@ int main( int argc, char* argv[] )
   while ( i < in_length && (process_ok = process( argv[1][i] )) ) {
     ++i;
   }
+
   if ( process_ok ) {
     // TODO. create an explicit "finalize" call
     //  (which underneath the covers senda a NULL char to process())
     //
-    if ( process( '\0' ) ) {
+    process_ok = process( '\0' );
+  }
 
-      // print out expression to be evaluated
-      //
-      for ( std::vector<item_data_type>::iterator iter( expression_.begin() )
-	      ; iter != expression_.end()
-	      ; ++iter ) {
-	if ( iter->id == ITEM_ID_TYPE_CONSTANT ) {
-	  std::cout << iter->value << "\n";
-	}
-	else {
-	  std::cout << operator_data[ iter->id ].text << "\n";
-	}
+  if ( process_ok ) {
+    // print out expression to be evaluated
+    //
+    for ( std::vector<item_data_type>::iterator iter( expression_.begin() )
+	    ; iter != expression_.end()
+	    ; ++iter ) {
+      if ( iter->id == ITEM_ID_TYPE_CONSTANT ) {
+	std::cout << iter->value << "\n";
       }
-      
+      else {
+	std::cout << operator_data[ iter->id ].text << "\n";
+      }
     }
+  }
+
+  if ( !evaluate( expression_ ) ) {
+    // TODO. error
   }
 
   return 0;
