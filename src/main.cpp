@@ -287,7 +287,7 @@ namespace {
 	     || operator_stack.back().id == ITEM_ID_TYPE_OP_OR ) {
 	  size_t short_circuit_index = operator_stack.back().short_circuit_offset;
 	  expression[ short_circuit_index ].short_circuit_offset = expression.size() - short_circuit_index;
-	  std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression.size() - short_circuit_index) << "\n";
+	  //std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression.size() - short_circuit_index) << "\n";
 	  expression.back().short_circuit_offset = 0U;
 	}
 
@@ -779,7 +779,9 @@ bool process( char c )
       std::cerr << "ERROR: unbalanced parenthesis\n";
       return false;
     }
-    
+
+    // TODO. logic very similar to this is in update_stacks_with_operator(). DRY!
+    //
     while ( !operator_stack_.empty() ) {
       //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into expression stack\n";
       expression_.emplace_back( operator_stack_.back() );
@@ -790,7 +792,7 @@ bool process( char c )
 	   || operator_stack_.back().id == ITEM_ID_TYPE_OP_OR ) {
 	size_t short_circuit_index = operator_stack_.back().short_circuit_offset;
 	expression_[ short_circuit_index ].short_circuit_offset = expression_.size() - short_circuit_index;
-	std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression_.size() - short_circuit_index) << "\n";
+	//std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression_.size() - short_circuit_index) << "\n";
 	expression_.back().short_circuit_offset = 0U;
       }
       
@@ -806,31 +808,15 @@ bool evaluate( const std::vector<item_data_type> &expression )
 {
   std::vector<double> evaluation_stack;
 
-  bool short_circuit_chain_mode = false;
-  size_t  iter_increment = 1U;
+  bool    short_circuit_chain_mode = false;
+  size_t  iter_increment           = 1U;
 
-  // TODO. re-formulate this loop to avoid duplicating the
-  // short-circuit logic
-  //
+
   for ( std::vector<item_data_type>::const_iterator iter = expression.begin()
 	  ; iter != expression.end()
 	  ; iter += iter_increment ) {
 
-    if ( short_circuit_chain_mode ) {
-      if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
-	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
-	iter_increment = iter->short_circuit_offset;
-      }
-      else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
-	std::cout << "DEBUG: short-circuit FALSE jumping ahead " << iter->short_circuit_offset << "\n";
-	iter_increment = iter->short_circuit_offset;
-      }
-      else {
-	iter_increment = 1U;
-	short_circuit_chain_mode = false;
-      }
-    }
-
+    iter_increment = 1U;
     
     if ( !short_circuit_chain_mode ) {
       
@@ -995,20 +981,24 @@ bool evaluate( const std::vector<item_data_type> &expression )
     }
 
 
-    if ( !short_circuit_chain_mode ) {
-      // Check if the current item is a 'short-circuit' item.
-      // If so, short-circuit as needed
-      //
-      if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
-	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
-	short_circuit_chain_mode = true;
-	iter_increment = iter->short_circuit_offset;
-      }
-      else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
-	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
-	short_circuit_chain_mode = true;
-	iter_increment = iter->short_circuit_offset;
-      }
+    // Check if the current item is a 'short-circuit' item.
+    // If so, short-circuit as needed
+    //
+    if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
+      //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
+      short_circuit_chain_mode = true;
+      iter_increment = iter->short_circuit_offset;
+    }
+    else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
+      //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
+      short_circuit_chain_mode = true;
+      iter_increment = iter->short_circuit_offset;
+    }
+    else if ( short_circuit_chain_mode ) {
+      // We were in short-circuit mode but have left, so we need
+      // to "reprocess" this item
+      short_circuit_chain_mode = false;
+      iter_increment = 0U;
     }
 
     
