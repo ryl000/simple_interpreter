@@ -190,29 +190,45 @@ namespace {
   };
 
 
+
+  enum short_circuit_type {
+    SHORT_CIRCUIT_NONE
+    ,SHORT_CIRCUIT_FALSE
+    ,SHORT_CIRCUIT_TRUE
+  };
+
+
   
   struct item_data_type {
     item_data_type( double in_value )
       :value( in_value )
       ,addr( nullptr )
       ,id( ITEM_ID_TYPE_CONSTANT )
+      ,short_circuit( SHORT_CIRCUIT_NONE )
+      ,short_circuit_offset( 0U )
     {}
 
     item_data_type( double *in_addr )
       :value( 0.0 )
       ,addr( in_addr )
       ,id( ITEM_ID_TYPE_ADDRESS )
+      ,short_circuit( SHORT_CIRCUIT_NONE )
+      ,short_circuit_offset( 0U )
     {}
 
     item_data_type( item_id_type in_id )
       :value( 0.0 )
       ,addr( nullptr )
       ,id( in_id )
+      ,short_circuit( SHORT_CIRCUIT_NONE )
+      ,short_circuit_offset( 0U )
     {}
   
-    double        value;
-    double       *addr;
-    item_id_type  id;
+    double              value;
+    double             *addr;
+    item_id_type        id;
+    short_circuit_type  short_circuit;
+    size_t              short_circuit_offset;
   };
 
   
@@ -264,7 +280,18 @@ namespace {
       while ( operator_stack.size() != lparens.back() ) {
 	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into expression stack\n";
 	expression.emplace_back( operator_stack.back() );
-	operator_stack.pop_back();
+
+	// If && or || is pushed into the expression_ stack, we need to resolve any previously-tagged
+	// operators with the correct short circuit offset
+	if ( operator_stack.back().id == ITEM_ID_TYPE_OP_AND
+	     || operator_stack.back().id == ITEM_ID_TYPE_OP_OR ) {
+	  size_t short_circuit_index = operator_stack.back().short_circuit_offset;
+	  expression[ short_circuit_index ].short_circuit_offset = expression.size() - short_circuit_index;
+	  std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression.size() - short_circuit_index) << "\n";
+	  expression.back().short_circuit_offset = 0U;
+	}
+
+      	operator_stack.pop_back();
       }
 
       //std::cout << "DEBUG: popping lparens stack\n";
@@ -284,6 +311,21 @@ namespace {
       if ( item_data.id != ITEM_ID_TYPE_OP_COMMA ) {
 	//std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
 	operator_stack.emplace_back( item_data );
+
+	// If && or ||, we need to "tag" the highest item in the expression_ stack,
+	//  for purposes of resolving any short-circuit.
+	// NOTE that we are using the "short circuit offset" field in the && or || to
+	//  store the location of the associated operator. This is faster than
+	//  searching backwards at the time the && or || is pushed into the expression stack
+	//
+	if ( item_data.id == ITEM_ID_TYPE_OP_AND ) {
+	  expression.back().short_circuit = SHORT_CIRCUIT_FALSE;
+	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
+	}
+	else if ( item_data.id == ITEM_ID_TYPE_OP_OR ) {
+	  expression.back().short_circuit = SHORT_CIRCUIT_TRUE;
+	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
+	}
       }
     }
 
@@ -741,6 +783,17 @@ bool process( char c )
     while ( !operator_stack_.empty() ) {
       //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into expression stack\n";
       expression_.emplace_back( operator_stack_.back() );
+
+      // If && or || is pushed into the expression_ stack, we need to resolve any previously-tagged
+      // operators with the correct short circuit offset
+      if ( operator_stack_.back().id == ITEM_ID_TYPE_OP_AND
+	   || operator_stack_.back().id == ITEM_ID_TYPE_OP_OR ) {
+	size_t short_circuit_index = operator_stack_.back().short_circuit_offset;
+	expression_[ short_circuit_index ].short_circuit_offset = expression_.size() - short_circuit_index;
+	std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression_.size() - short_circuit_index) << "\n";
+	expression_.back().short_circuit_offset = 0U;
+      }
+      
       operator_stack_.pop_back();
     }
   }
@@ -751,171 +804,214 @@ bool process( char c )
 
 bool evaluate( const std::vector<item_data_type> &expression )
 {
-  // TODO. short-circuit on && and ||
-  //
-  
   std::vector<double> evaluation_stack;
 
+  bool short_circuit_chain_mode = false;
+  size_t  iter_increment = 1U;
+
+  // TODO. re-formulate this loop to avoid duplicating the
+  // short-circuit logic
+  //
   for ( std::vector<item_data_type>::const_iterator iter = expression.begin()
 	  ; iter != expression.end()
-	  ; ++iter ) {
-    switch ( iter->id ) {
-    case ITEM_ID_TYPE_CONSTANT:
-      evaluation_stack.push_back( iter->value );
-      break;
+	  ; iter += iter_increment ) {
 
-    case ITEM_ID_TYPE_ADDRESS:
-      // TODO.
-      break;
-
-    case ITEM_ID_TYPE_OP_NOT:
-      if ( evaluation_stack.empty() ) {
-	return false;
+    if ( short_circuit_chain_mode ) {
+      if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
+	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
+	iter_increment = iter->short_circuit_offset;
       }
-      evaluation_stack.back() = ((evaluation_stack.back() == 0.0) ? 1.0 : 0.0);
-      break;
-
-    case ITEM_ID_TYPE_OP_NEGATE:
-      if ( evaluation_stack.empty() ) {
-	return false;
+      else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
+	std::cout << "DEBUG: short-circuit FALSE jumping ahead " << iter->short_circuit_offset << "\n";
+	iter_increment = iter->short_circuit_offset;
       }
-      evaluation_stack.back() = -1.0 * (evaluation_stack.back());
-      break;
-
-    case ITEM_ID_TYPE_OP_ADD:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
+      else {
+	iter_increment = 1U;
+	short_circuit_chain_mode = false;
       }
-      {
-	double result = *(evaluation_stack.rbegin() + 1) + *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_SUBTRACT:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	double result = *(evaluation_stack.rbegin() + 1) - *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_DIVIDE:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	// TODO. check for div-by-zero
-	double result = *(evaluation_stack.rbegin() + 1) / *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_MULTIPLY:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	double result = *(evaluation_stack.rbegin() + 1) * *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_EQ:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) == *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_NEQ:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) != *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_GE:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) >= *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_GT:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) > *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_LE:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) <= *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_LT:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = *(evaluation_stack.rbegin() + 1) < *(evaluation_stack.rbegin());
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_AND:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) && (*(evaluation_stack.rbegin()) != 0.0);
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
-    case ITEM_ID_TYPE_OP_OR:
-      if ( evaluation_stack.size() < 2 ) {
-	return false;
-      }
-      {
-	bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) || (*(evaluation_stack.rbegin()) != 0.0);
-	evaluation_stack.pop_back();
-	evaluation_stack.back() = result ? 1.0 : 0.0;
-      }
-      break;
-
     }
+
+    
+    if ( !short_circuit_chain_mode ) {
+      
+      switch ( iter->id ) {
+      case ITEM_ID_TYPE_CONSTANT:
+	evaluation_stack.push_back( iter->value );
+	break;
+
+      case ITEM_ID_TYPE_ADDRESS:
+	// TODO.
+	break;
+
+      case ITEM_ID_TYPE_OP_NOT:
+	if ( evaluation_stack.empty() ) {
+	  return false;
+	}
+	evaluation_stack.back() = ((evaluation_stack.back() == 0.0) ? 1.0 : 0.0);
+	break;
+
+      case ITEM_ID_TYPE_OP_NEGATE:
+	if ( evaluation_stack.empty() ) {
+	  return false;
+	}
+	evaluation_stack.back() = -1.0 * (evaluation_stack.back());
+	break;
+
+      case ITEM_ID_TYPE_OP_ADD:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  double result = *(evaluation_stack.rbegin() + 1) + *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_SUBTRACT:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  double result = *(evaluation_stack.rbegin() + 1) - *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_DIVIDE:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  // TODO. check for div-by-zero
+	  double result = *(evaluation_stack.rbegin() + 1) / *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_MULTIPLY:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  double result = *(evaluation_stack.rbegin() + 1) * *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_EQ:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) == *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_NEQ:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) != *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_GE:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) >= *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_GT:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) > *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_LE:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) <= *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_LT:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = *(evaluation_stack.rbegin() + 1) < *(evaluation_stack.rbegin());
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_AND:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) && (*(evaluation_stack.rbegin()) != 0.0);
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      case ITEM_ID_TYPE_OP_OR:
+	if ( evaluation_stack.size() < 2 ) {
+	  return false;
+	}
+	{
+	  bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) || (*(evaluation_stack.rbegin()) != 0.0);
+	  evaluation_stack.pop_back();
+	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	}
+	break;
+
+      }
+      
+    }
+
+
+    if ( !short_circuit_chain_mode ) {
+      // Check if the current item is a 'short-circuit' item.
+      // If so, short-circuit as needed
+      //
+      if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
+	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
+	short_circuit_chain_mode = true;
+	iter_increment = iter->short_circuit_offset;
+      }
+      else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
+	std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
+	short_circuit_chain_mode = true;
+	iter_increment = iter->short_circuit_offset;
+      }
+    }
+
+    
   }
 
   if ( !evaluation_stack.empty() ) {
