@@ -87,6 +87,8 @@ namespace {
 
     ,TOKEN_ID_TYPE_LPARENS
     ,TOKEN_ID_TYPE_RPARENS
+
+    ,TOKEN_ID_TYPE_SEMICOLON
   };
 
   
@@ -146,6 +148,8 @@ namespace {
 
     ,ITEM_ID_TYPE_OP_LPARENS
     ,ITEM_ID_TYPE_OP_RPARENS
+
+    ,ITEM_ID_TYPE_OP_SEMICOLON
   };
 
 
@@ -187,6 +191,8 @@ namespace {
 
     ,{ 1, "(" }
     ,{ 1, ")" }
+
+    ,{ 0, ";" }
   };
 
 
@@ -255,10 +261,11 @@ namespace {
   
 
   bool update_stacks_with_operator(
-				   std::vector<item_data_type> &expression
-				   ,std::vector<item_data_type> &operator_stack
-				   ,std::vector<size_t>         &lparens
-				   ,item_id_type                 item_id
+				   std::vector<std::vector<item_data_type>> &expressions
+				   ,std::vector<item_data_type>              &current_expression
+				   ,std::vector<item_data_type>              &operator_stack
+				   ,std::vector<size_t>                      &lparens
+				   ,item_id_type                              item_id
 				   )
   {
     //std::cout << "DEBUG: saw " << operator_data[ item_data.id ].text << "\n";
@@ -277,8 +284,13 @@ namespace {
 	return false;
       }
 
+      // For a semi-colon, make sure no un-matched left parens exist
+      else if ( (item_id == ITEM_ID_TYPE_OP_SEMICOLON) && !lparens.empty() ) {
+	return false;
+      }
+
       // The elements popped off the operator stack will be added to the
-      //  expression stack
+      //  current_expression stack
       //
 	
       while ( !operator_stack.empty() ) {
@@ -302,26 +314,26 @@ namespace {
 	    break;
 	  }
 
-	  // ...Or an operator with a >= precedence is found
+	  // ...Or the topmost operator in the operator stack has a < precedence
 	  //
 	  if ( operator_data[ item_id ].precedence >= operator_data[ operator_stack.back().id ].precedence ) {
 	    break;
 	  }
 	}
 	
-	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into expression stack\n";
-	expression.emplace_back( operator_stack.back() );
+	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into current_expression stack\n";
+	current_expression.emplace_back( operator_stack.back() );
 
-	// If && or || is pushed into the expression_ stack, we need to resolve any previously-tagged
+	// If && or || is pushed into the current_expression_ stack, we need to resolve any previously-tagged
 	// operators with the correct short circuit offset
 	if ( operator_stack.back().id == ITEM_ID_TYPE_OP_AND
 	     || operator_stack.back().id == ITEM_ID_TYPE_OP_OR ) {
 	  size_t short_circuit_index = operator_stack.back().short_circuit_offset;
 	  // TODO. guard against invalid index?
 	  // TODO. guard against invalid offset calc?
-	  expression[ short_circuit_index ].short_circuit_offset = expression.size() - short_circuit_index;
-	  //std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression.size() - short_circuit_index) << "\n";
-	  expression.back().short_circuit_offset = 0U;
+	  current_expression[ short_circuit_index ].short_circuit_offset = current_expression.size() - short_circuit_index;
+	  //std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (current_expression.size() - short_circuit_index) << "\n";
+	  current_expression.back().short_circuit_offset = 0U;
 	}
 
 	operator_stack.pop_back();
@@ -336,31 +348,39 @@ namespace {
 	lparens.pop_back();
       }
 
-      // Otherwise, if this is not a comma, add it to the
+      // Otherwise, if this is not a comma or semi-colon, add it to the
       //  operator stack
       //
-      else if ( item_id != ITEM_ID_TYPE_OP_COMMA ) {
+      else if ( item_id != ITEM_ID_TYPE_OP_COMMA && item_id != ITEM_ID_TYPE_OP_SEMICOLON ) {
 	
 	//std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
 	operator_stack.emplace_back( item_data_type( item_id ) );
 
-	// If && or ||, we need to "tag" the highest item in the expression_ stack,
+	// If && or ||, we need to "tag" the highest item in the current_expression_ stack,
 	//  for purposes of resolving any short-circuit.
 	// NOTE that we are using the "short circuit offset" field in the && or || to
 	//  store the location of the associated operator. This is faster than
-	//  searching backwards at the time the && or || is pushed into the expression stack
+	//  searching backwards at the time the && or || is pushed into the current_expression stack
 	//
 	if ( item_id == ITEM_ID_TYPE_OP_AND ) {
-	  // TODO. guard against empty expression?
-	  expression.back().short_circuit = SHORT_CIRCUIT_FALSE;
-	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
+	  // TODO. guard against empty current_expression?
+	  current_expression.back().short_circuit = SHORT_CIRCUIT_FALSE;
+	  operator_stack.back().short_circuit_offset = current_expression.size() - 1U;
 	}
 	else if ( item_id == ITEM_ID_TYPE_OP_OR ) {
-	  // TODO. guard against empty expression?
-	  expression.back().short_circuit = SHORT_CIRCUIT_TRUE;
-	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
+	  // TODO. guard against empty current_expression?
+	  current_expression.back().short_circuit = SHORT_CIRCUIT_TRUE;
+	  operator_stack.back().short_circuit_offset = current_expression.size() - 1U;
 	}
 	
+      }
+
+      // for semi-colon, we need to put the current expression at the end
+      //  of the expressions vector, then clear it (in preparation for use
+      //  as a new expression)
+      if ( item_id == ITEM_ID_TYPE_OP_SEMICOLON && !current_expression.empty() ) {
+	expressions.push_back( current_expression );
+	current_expression.clear();
       }
 
     }
@@ -372,16 +392,17 @@ namespace {
 
   // Lexer/parser state
   //
-  size_t                       char_no_ = 0U;
-  std::string                  current_token_;
-  std::vector<item_data_type>  expression_;
-  lex_mode_type                lex_mode_ = LEX_MODE_START;
-  size_t                       line_no_ = 0U;
-  std::vector<size_t>          lparens_; // TODO. convert this to a deque?
-  std::vector<item_data_type>  operator_stack_; // TODO. convert this to a deque?
-  parse_mode_type              parse_mode_ = PARSE_MODE_START;
-  std::vector<token_type>      tokens_;
-  size_t                       tokens_parsed_ = 0U;
+  size_t                                    char_no_ = 0U;
+  std::string                               current_token_;
+  std::vector<item_data_type>               current_expression_;
+  std::vector<std::vector<item_data_type>>  expressions_;
+  lex_mode_type                             lex_mode_ = LEX_MODE_START;
+  size_t                                    line_no_ = 0U;
+  std::vector<size_t>                       lparens_; // TODO. convert this to a deque?
+  std::vector<item_data_type>               operator_stack_; // TODO. convert this to a deque?
+  parse_mode_type                           parse_mode_ = PARSE_MODE_START;
+  std::vector<token_type>                   tokens_;
+  size_t                                    tokens_parsed_ = 0U;
 }
 
 
@@ -439,6 +460,9 @@ bool process( char c )
       }
       else if ( c == ',' ) {
 	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );
+      }
+      else if ( c == ';' ) {
+	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );
       }
       else if ( c == '=' ) {
 	lex_mode_ = LEX_MODE_EQ_CHECK;
@@ -684,7 +708,7 @@ bool process( char c )
 	
       case PARSE_MODE_START:
 	if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	  expression_.emplace_back( std::atof( last_token.text.c_str() ) );
+	  current_expression_.emplace_back( std::atof( last_token.text.c_str() ) );
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
@@ -695,10 +719,10 @@ bool process( char c )
 		  last_token.id == TOKEN_ID_TYPE_MINUS ||
 		  last_token.id == TOKEN_ID_TYPE_NOT ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
 	  }
 	  else {
 	    // Nothing needs to be done for unary +
@@ -706,8 +730,11 @@ bool process( char c )
 	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
+	  update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
 	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	  // Nothing needs to be done; stay in this mode
 	}
 	else {
 	  parse_mode_ = PARSE_MODE_ERROR;
@@ -718,7 +745,7 @@ bool process( char c )
 	if ( last_token.id == TOKEN_ID_TYPE_NUMBER
 	     || last_token.id == TOKEN_ID_TYPE_NAME ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	    expression_.emplace_back( std::atof( last_token.text.c_str() ) );
+	    current_expression_.emplace_back( std::atof( last_token.text.c_str() ) );
 	  }
 	  else {
 	    // TODO. push operand into expression vector
@@ -729,10 +756,10 @@ bool process( char c )
 		  last_token.id == TOKEN_ID_TYPE_MINUS ||
 		  last_token.id == TOKEN_ID_TYPE_NOT ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
 	  }
 	  else {
 	    // Nothing needs to be done for unary +
@@ -740,7 +767,7 @@ bool process( char c )
 	  // stay in this parse mode
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
+	  update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
 	  // stay in this parse mode
 	}
 	// TODO. allow RPARENS here? Tricky...
@@ -771,14 +798,20 @@ bool process( char c )
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  else {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, new_item_id_type );
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, new_item_id_type );
 	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 	  }
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	  if ( !update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_RPARENS ) ) {
+	  if ( !update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_RPARENS ) ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	  if ( !update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_SEMICOLON ) ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  parse_mode_ = PARSE_MODE_START;
 	}
 	else {
 	  parse_mode_ = PARSE_MODE_ERROR;
@@ -791,6 +824,15 @@ bool process( char c )
     }
   }
 
+  
+  // If we've parsed all tokens, clear everything
+  //
+  if ( tokens_.size() == tokens_parsed_ ) {
+    tokens_.clear();
+    tokens_parsed_ = 0U;
+  }
+
+  
   if ( parse_mode_ == PARSE_MODE_ERROR ) {
     std::cerr << "ERROR: parse error on character " << c << "\n";
     return false;
@@ -800,47 +842,13 @@ bool process( char c )
   // Catch errors when parser not in a valid final state
   //
   if ( c == '\0' ) {
-    if ( parse_mode_ == PARSE_MODE_OPERAND_EXPECTED ) {
+    if ( parse_mode_ != PARSE_MODE_START ) {
       std::cerr << "ERROR: parse not terminated correctly\n";
       return false;
     }
   }
 
 
-  // Finalize the expression
-  //
-  if ( c == '\0' ) {
-
-    if ( !lparens_.empty() ) {
-      std::cerr << "ERROR: unbalanced parenthesis\n";
-      return false;
-    }
-
-    // TODO. logic very similar to this is in update_stacks_with_operator(). DRY!
-    //
-    // update stack loop (3)
-    while ( !operator_stack_.empty() ) {
-      
-      //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into expression stack\n";
-      expression_.emplace_back( operator_stack_.back() );
-
-      // If && or || is pushed into the expression_ stack, we need to resolve any previously-tagged
-      // operators with the correct short circuit offset
-      if ( operator_stack_.back().id == ITEM_ID_TYPE_OP_AND
-	   || operator_stack_.back().id == ITEM_ID_TYPE_OP_OR ) {
-	size_t short_circuit_index = operator_stack_.back().short_circuit_offset;
-	// TODO. guard against invalid index?
-	// TODO. guard against invalid offset calc?
-	expression_[ short_circuit_index ].short_circuit_offset = expression_.size() - short_circuit_index;
-	//std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression_.size() - short_circuit_index) << "\n";
-	expression_.back().short_circuit_offset = 0U;
-      }
-      
-      operator_stack_.pop_back();
-      
-    }
-  }
-  
   return true;
 }
 
@@ -1077,23 +1085,28 @@ int main( int argc, char* argv[] )
   }
 
   if ( process_ok ) {
-    // print out expression to be evaluated
+    // print out expressions to be evaluated
     //
-    for ( std::vector<item_data_type>::iterator iter( expression_.begin() )
-	    ; iter != expression_.end()
+    for ( std::vector<std::vector<item_data_type>>::iterator iter( expressions_.begin() )
+	    ; iter != expressions_.end()
 	    ; ++iter ) {
-      if ( iter->id == ITEM_ID_TYPE_CONSTANT ) {
-	std::cout << iter->value << "\n";
+      for ( std::vector<item_data_type>::iterator iter2( iter->begin() )
+	    ; iter2 != iter->end()
+	    ; ++iter2 ) {
+	if ( iter2->id == ITEM_ID_TYPE_CONSTANT ) {
+	  std::cout << iter2->value << "\n";
+	}
+	else {
+	  std::cout << operator_data[ iter2->id ].text << "\n";
+	}
       }
-      else {
-	std::cout << operator_data[ iter->id ].text << "\n";
+
+      if ( !evaluate( *iter ) ) {
+	// TODO. error
       }
     }
   }
 
-  if ( !evaluate( expression_ ) ) {
-    // TODO. error
-  }
 
   return 0;
 }
