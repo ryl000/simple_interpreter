@@ -258,26 +258,57 @@ namespace {
 				   std::vector<item_data_type> &expression
 				   ,std::vector<item_data_type> &operator_stack
 				   ,std::vector<size_t>         &lparens
-				   ,const item_data_type        &item_data
+				   ,item_id_type                 item_id
 				   )
   {
     //std::cout << "DEBUG: saw " << operator_data[ item_data.id ].text << "\n";
 
-    if ( item_data.id == ITEM_ID_TYPE_OP_LPARENS ) {
+    if ( item_id == ITEM_ID_TYPE_OP_LPARENS ) {
       
       //std::cout << "DEBUG: pushing " << operator_stack.size() << " onto lparens stack\n";
       lparens.push_back( operator_stack.size() );
       
     }
-    else if ( item_data.id == ITEM_ID_TYPE_OP_RPARENS ) {
+    else {
 
-      //std::cout << "DEBUG: flushing operator stack to nearest lparens\n";
-
-      if ( lparens.empty() ) {
+      // For a closing parens, make sure parenthesis is balanced
+      //
+      if ( (item_id == ITEM_ID_TYPE_OP_RPARENS) && lparens.empty() ) {
 	return false;
       }
-      
-      while ( operator_stack.size() != lparens.back() ) {
+
+      // The elements popped off the operator stack will be added to the
+      //  expression stack
+      //
+	
+      while ( !operator_stack.empty() ) {
+
+	// For a closing parens, pop elements off operator stack until the
+	//  matching opening parens is found
+	//
+	if ( item_id == ITEM_ID_TYPE_OP_RPARENS ) {
+
+	  if ( operator_stack.size() == lparens.back() ) {
+	    break;
+	  }
+
+	}
+	else {
+
+	  // Otherwise, pop elements off operator stack until either the
+	  // current parenthesis level has been exhausted...
+	  //
+	  if ( !lparens.empty() && (operator_stack.size() <= lparens.back()) ) {
+	    break;
+	  }
+
+	  // ...Or an operator with a >= precedence is found
+	  //
+	  if ( operator_data[ item_id ].precedence >= operator_data[ operator_stack.back().id ].precedence ) {
+	    break;
+	  }
+	}
+	
 	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into expression stack\n";
 	expression.emplace_back( operator_stack.back() );
 
@@ -286,31 +317,32 @@ namespace {
 	if ( operator_stack.back().id == ITEM_ID_TYPE_OP_AND
 	     || operator_stack.back().id == ITEM_ID_TYPE_OP_OR ) {
 	  size_t short_circuit_index = operator_stack.back().short_circuit_offset;
+	  // TODO. guard against invalid index?
+	  // TODO. guard against invalid offset calc?
 	  expression[ short_circuit_index ].short_circuit_offset = expression.size() - short_circuit_index;
 	  //std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression.size() - short_circuit_index) << "\n";
 	  expression.back().short_circuit_offset = 0U;
 	}
 
-      	operator_stack.pop_back();
-      }
-
-      //std::cout << "DEBUG: popping lparens stack\n";
-      lparens.pop_back();
-
-    }
-    else {
-
-      while ( !operator_stack.empty()
-	      && (lparens.empty() || (operator_stack.size() > lparens.back()) )
-	      && (operator_data[ item_data.id ].precedence < operator_data[ operator_stack.back().id ].precedence) ) {
-	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into expression stack\n";
-	expression.emplace_back( operator_stack.back() );
 	operator_stack.pop_back();
+
       }
 
-      if ( item_data.id != ITEM_ID_TYPE_OP_COMMA ) {
+
+      // If this was a closing parens, take care of the
+      //  opening parens
+      //
+      if ( item_id == ITEM_ID_TYPE_OP_RPARENS ) {
+	lparens.pop_back();
+      }
+
+      // Otherwise, if this is not a comma, add it to the
+      //  operator stack
+      //
+      else if ( item_id != ITEM_ID_TYPE_OP_COMMA ) {
+	
 	//std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
-	operator_stack.emplace_back( item_data );
+	operator_stack.emplace_back( item_data_type( item_id ) );
 
 	// If && or ||, we need to "tag" the highest item in the expression_ stack,
 	//  for purposes of resolving any short-circuit.
@@ -318,17 +350,21 @@ namespace {
 	//  store the location of the associated operator. This is faster than
 	//  searching backwards at the time the && or || is pushed into the expression stack
 	//
-	if ( item_data.id == ITEM_ID_TYPE_OP_AND ) {
+	if ( item_id == ITEM_ID_TYPE_OP_AND ) {
+	  // TODO. guard against empty expression?
 	  expression.back().short_circuit = SHORT_CIRCUIT_FALSE;
 	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
 	}
-	else if ( item_data.id == ITEM_ID_TYPE_OP_OR ) {
+	else if ( item_id == ITEM_ID_TYPE_OP_OR ) {
+	  // TODO. guard against empty expression?
 	  expression.back().short_circuit = SHORT_CIRCUIT_TRUE;
 	  operator_stack.back().short_circuit_offset = expression.size() - 1U;
 	}
+	
       }
-    }
 
+    }
+    
     return true;
   }
 
@@ -341,8 +377,8 @@ namespace {
   std::vector<item_data_type>  expression_;
   lex_mode_type                lex_mode_ = LEX_MODE_START;
   size_t                       line_no_ = 0U;
-  std::vector<size_t>          lparens_;
-  std::vector<item_data_type>  operator_stack_;
+  std::vector<size_t>          lparens_; // TODO. convert this to a deque?
+  std::vector<item_data_type>  operator_stack_; // TODO. convert this to a deque?
   parse_mode_type              parse_mode_ = PARSE_MODE_START;
   std::vector<token_type>      tokens_;
   size_t                       tokens_parsed_ = 0U;
@@ -659,10 +695,10 @@ bool process( char c )
 		  last_token.id == TOKEN_ID_TYPE_MINUS ||
 		  last_token.id == TOKEN_ID_TYPE_NOT ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_NEGATE ) );
+	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_NOT ) );
+	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
 	  }
 	  else {
 	    // Nothing needs to be done for unary +
@@ -670,7 +706,7 @@ bool process( char c )
 	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_LPARENS ) );
+	  update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
 	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 	}
 	else {
@@ -693,10 +729,10 @@ bool process( char c )
 		  last_token.id == TOKEN_ID_TYPE_MINUS ||
 		  last_token.id == TOKEN_ID_TYPE_NOT ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_NEGATE ) );
+	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NEGATE );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_NOT ) );
+	    update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_NOT );
 	  }
 	  else {
 	    // Nothing needs to be done for unary +
@@ -704,7 +740,7 @@ bool process( char c )
 	  // stay in this parse mode
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_LPARENS ) );
+	  update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_LPARENS );
 	  // stay in this parse mode
 	}
 	// TODO. allow RPARENS here? Tricky...
@@ -735,12 +771,12 @@ bool process( char c )
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  else {
-	    update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( new_item_id_type ) );
+	    update_stacks_with_operator( expression_, operator_stack_, lparens_, new_item_id_type );
 	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 	  }
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	  if ( !update_stacks_with_operator( expression_, operator_stack_, lparens_, item_data_type( ITEM_ID_TYPE_OP_RPARENS ) ) ) {
+	  if ( !update_stacks_with_operator( expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_RPARENS ) ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	}
@@ -782,7 +818,9 @@ bool process( char c )
 
     // TODO. logic very similar to this is in update_stacks_with_operator(). DRY!
     //
+    // update stack loop (3)
     while ( !operator_stack_.empty() ) {
+      
       //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into expression stack\n";
       expression_.emplace_back( operator_stack_.back() );
 
@@ -791,12 +829,15 @@ bool process( char c )
       if ( operator_stack_.back().id == ITEM_ID_TYPE_OP_AND
 	   || operator_stack_.back().id == ITEM_ID_TYPE_OP_OR ) {
 	size_t short_circuit_index = operator_stack_.back().short_circuit_offset;
+	// TODO. guard against invalid index?
+	// TODO. guard against invalid offset calc?
 	expression_[ short_circuit_index ].short_circuit_offset = expression_.size() - short_circuit_index;
 	//std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (expression_.size() - short_circuit_index) << "\n";
 	expression_.back().short_circuit_offset = 0U;
       }
       
       operator_stack_.pop_back();
+      
     }
   }
   
