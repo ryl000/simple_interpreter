@@ -24,6 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -33,6 +34,8 @@ namespace {
     LEX_MODE_ERROR
   
     ,LEX_MODE_START
+
+    ,LEX_MODE_COMMENT
   
     ,LEX_MODE_NUMBER_START_DIGIT
     ,LEX_MODE_NUMBER_START_DECIMAL
@@ -115,13 +118,15 @@ namespace {
     ,PARSE_MODE_START
     ,PARSE_MODE_OPERAND_EXPECTED
     ,PARSE_MODE_OPERATOR_EXPECTED
+    ,PARSE_MODE_NAME_EXPECTED
+    ,PARSE_MODE_VARIABLE_DEFINITION_START
   };
 
 
   
   enum item_id_type {
     ITEM_ID_TYPE_CONSTANT = 0
-    ,ITEM_ID_TYPE_ADDRESS
+    ,ITEM_ID_TYPE_NAME
   
     ,ITEM_ID_TYPE_OP_NOT
     ,ITEM_ID_TYPE_OP_NEGATE
@@ -143,13 +148,15 @@ namespace {
     ,ITEM_ID_TYPE_OP_OR
   
     ,ITEM_ID_TYPE_OP_ASSIGN
-  
+
     ,ITEM_ID_TYPE_OP_COMMA
 
     ,ITEM_ID_TYPE_OP_LPARENS
     ,ITEM_ID_TYPE_OP_RPARENS
 
     ,ITEM_ID_TYPE_OP_SEMICOLON
+
+    ,ITEM_ID_TYPE_OP_CREATE_DOUBLE
   };
 
 
@@ -164,7 +171,7 @@ namespace {
   // NOTE: matches up with item id types above
   const operator_data_type operator_data[] = {
     { 0, "(constant)" }
-    ,{ 0, "(addr)" }
+    ,{ 0, "(name)" }
    
     ,{ 10, "!" }
     ,{ 10, "neg" }
@@ -193,6 +200,8 @@ namespace {
     ,{ 1, ")" }
 
     ,{ 0, ";" }
+
+    ,{ 11, "create" }
   };
 
 
@@ -208,33 +217,69 @@ namespace {
   struct item_data_type {
     item_data_type( double in_value )
       :value( in_value )
-      ,addr( nullptr )
+      ,name()
       ,id( ITEM_ID_TYPE_CONSTANT )
       ,short_circuit( SHORT_CIRCUIT_NONE )
       ,short_circuit_offset( 0U )
     {}
 
-    item_data_type( double *in_addr )
+    item_data_type( const std::string &in_name )
       :value( 0.0 )
-      ,addr( in_addr )
-      ,id( ITEM_ID_TYPE_ADDRESS )
+      ,name( in_name )
+      ,id( ITEM_ID_TYPE_NAME )
       ,short_circuit( SHORT_CIRCUIT_NONE )
       ,short_circuit_offset( 0U )
     {}
 
     item_data_type( item_id_type in_id )
       :value( 0.0 )
-      ,addr( nullptr )
+      ,name()
       ,id( in_id )
       ,short_circuit( SHORT_CIRCUIT_NONE )
       ,short_circuit_offset( 0U )
     {}
   
     double              value;
-    double             *addr;
+    std::string         name;
     item_id_type        id;
     short_circuit_type  short_circuit;
     size_t              short_circuit_offset;
+  };
+
+
+  enum data_type {
+    DATA_TYPE_VALUE
+    ,DATA_TYPE_NAME
+  };
+
+  
+  struct operand_type {
+    operand_type( double in_value )
+      :name()
+      ,value( in_value )
+      ,type( DATA_TYPE_VALUE )
+    {}
+
+    operand_type( const std::string &in_name )
+      :name( in_name )
+      ,value( 0.0 )
+      ,type( DATA_TYPE_NAME )
+    {}
+
+    double get_value( void )
+    {
+      if ( type == DATA_TYPE_VALUE ) {
+	return value;
+      }
+      else {
+	// TODO. lookup
+	return 0.0;
+      }
+    }
+    
+    std::string name;
+    double      value;
+    data_type   type;
   };
 
   
@@ -482,6 +527,9 @@ bool process( char c )
       else if ( c == '|' ) {
 	lex_mode_ = LEX_MODE_OR_CHECK;
       }
+      else if ( c == '#' ) {
+	lex_mode_ = LEX_MODE_COMMENT;
+      }
       else if ( c == '\0' ) {
 	// end of input, nothing needs
 	// to be done
@@ -491,6 +539,11 @@ bool process( char c )
       }
       break;
 
+    case LEX_MODE_COMMENT:
+      if ( c == '\n' ) {
+	lex_mode_ = LEX_MODE_START;
+      }
+      break;
       
     case LEX_MODE_NUMBER_START_DIGIT:
       if ( std::isdigit( c ) ) {
@@ -707,12 +760,37 @@ bool process( char c )
       switch ( parse_mode_ ) {
 	
       case PARSE_MODE_START:
+	// TODO. handle variable declarations
+	//
+	// START -> 'double' -> PARSE_MODE_NAME_EXPECTED -> name -> PARSE_MODE_VAR_DEFINITION_START -> ';' -> finished
+	//                                                                                          -> '=' -> PARSE_MODE_OPERAND_EXPECTED
+	//                                                                                          -> error
+	//
+	// OR
+	//  treat 'double' as a unary operator, that happens to
+	//   require a 'name' as an operand, then an '=' operator
+	//   (if anything follows)
+	//
+	// double x = 9;
+	//
+	// x, create, 9, =
+	//
+	// double y = x = 10;
+	//
+	// y, create, x, 10, =, =
+	//
+	if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	  if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_CREATE_DOUBLE );
+	    parse_mode_ = PARSE_MODE_NAME_EXPECTED;
+	  }
+	  else {
+	    current_expression_.emplace_back( item_data_type( last_token.text ) );
+	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	  }
+	}
 	if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
 	  current_expression_.emplace_back( std::atof( last_token.text.c_str() ) );
-	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	  // TODO. push operand into expression vector
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
@@ -748,7 +826,7 @@ bool process( char c )
 	    current_expression_.emplace_back( std::atof( last_token.text.c_str() ) );
 	  }
 	  else {
-	    // TODO. push operand into expression vector
+	    current_expression_.emplace_back( item_data_type( last_token.text ) );
 	  }
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
@@ -818,6 +896,36 @@ bool process( char c )
 	}
 	break;
 
+
+      case PARSE_MODE_NAME_EXPECTED:
+	if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	  current_expression_.emplace_back( item_data_type( last_token.text ) );
+	  parse_mode_ = PARSE_MODE_VARIABLE_DEFINITION_START;
+	}
+	else {
+	  parse_mode_ = PARSE_MODE_ERROR;
+	}
+	break;
+
+
+      case PARSE_MODE_VARIABLE_DEFINITION_START:
+	if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	  if ( !update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_SEMICOLON ) ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  parse_mode_ = PARSE_MODE_START;
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+	  if ( !update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_ASSIGN ) ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+	}
+	else {
+	  parse_mode_ = PARSE_MODE_ERROR;
+	}
+	break;
+
       }
 
       ++tokens_parsed_;
@@ -855,7 +963,12 @@ bool process( char c )
 
 bool evaluate( const std::vector<item_data_type> &expression )
 {
+  std::map<std::string,double> variables;
   std::vector<double> evaluation_stack;
+
+  // TODO. evaluation stack needs to hold either numbers or names
+  // Names need to be resolved into values at the time they are accessed
+  //
 
   bool    short_circuit_chain_mode = false;
   size_t  iter_increment           = 1U;
@@ -874,8 +987,8 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	evaluation_stack.push_back( iter->value );
 	break;
 
-      case ITEM_ID_TYPE_ADDRESS:
-	// TODO.
+      case ITEM_ID_TYPE_NAME:
+	// TODO
 	break;
 
       case ITEM_ID_TYPE_OP_NOT:
@@ -1023,6 +1136,16 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back() = result ? 1.0 : 0.0;
 	}
+	break;
+
+      case ITEM_ID_TYPE_OP_ASSIGN:
+	// TODO. assign the value to the variable
+	// 
+	break;
+
+      case ITEM_ID_TYPE_OP_CREATE_DOUBLE:
+	// TODO. create this variable in the variables map
+	//
 	break;
 
       }
