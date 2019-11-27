@@ -97,7 +97,7 @@ namespace {
   
 
   struct token_type {
-    token_type( token_id_type in_id )
+    explicit token_type( token_id_type in_id )
       :text()
       ,id( in_id )
     {}
@@ -215,7 +215,7 @@ namespace {
 
   
   struct item_data_type {
-    item_data_type( double in_value )
+    explicit item_data_type( double in_value )
       :value( in_value )
       ,name()
       ,id( ITEM_ID_TYPE_CONSTANT )
@@ -223,7 +223,7 @@ namespace {
       ,short_circuit_offset( 0U )
     {}
 
-    item_data_type( const std::string &in_name )
+    explicit item_data_type( const std::string &in_name )
       :value( 0.0 )
       ,name( in_name )
       ,id( ITEM_ID_TYPE_NAME )
@@ -231,7 +231,7 @@ namespace {
       ,short_circuit_offset( 0U )
     {}
 
-    item_data_type( item_id_type in_id )
+    explicit item_data_type( item_id_type in_id )
       :value( 0.0 )
       ,name()
       ,id( in_id )
@@ -254,27 +254,52 @@ namespace {
 
   
   struct operand_type {
-    operand_type( double in_value )
+    explicit operand_type( double in_value )
       :name()
       ,value( in_value )
       ,type( DATA_TYPE_VALUE )
     {}
 
-    operand_type( const std::string &in_name )
+    explicit operand_type( const std::string &in_name )
       :name( in_name )
       ,value( 0.0 )
       ,type( DATA_TYPE_NAME )
     {}
 
-    double get_value( void )
+    double get_value( const std::map<std::string,double> &variables )
     {
       if ( type == DATA_TYPE_VALUE ) {
 	return value;
       }
       else {
-	// TODO. lookup
-	return 0.0;
+	std::map<std::string,double>::const_iterator iter = variables.find( name );
+	if ( iter == variables.end() ) {
+	  // TODO. error!
+	}
+	return iter->second;
       }
+    }
+
+    bool get_value( const std::map<std::string,double> &variables, double *out_value )
+    {
+      if ( type == DATA_TYPE_VALUE ) {
+	*out_value = value;
+	return true;
+      }
+      else {
+	std::map<std::string,double>::const_iterator iter = variables.find( name );
+	if ( iter == variables.end() ) {
+	  return false;
+	}
+	*out_value = iter->second;
+	return true;
+      }
+    }
+
+    void set_value( double in_value )
+    {
+      value = in_value;
+      type = DATA_TYPE_VALUE;
     }
     
     std::string name;
@@ -964,7 +989,7 @@ bool process( char c )
 bool evaluate( const std::vector<item_data_type> &expression )
 {
   std::map<std::string,double> variables;
-  std::vector<double> evaluation_stack;
+  std::vector<operand_type> evaluation_stack;
 
   // TODO. evaluation stack needs to hold either numbers or names
   // Names need to be resolved into values at the time they are accessed
@@ -984,25 +1009,25 @@ bool evaluate( const std::vector<item_data_type> &expression )
       
       switch ( iter->id ) {
       case ITEM_ID_TYPE_CONSTANT:
-	evaluation_stack.push_back( iter->value );
+	evaluation_stack.push_back( operand_type( iter->value ) );
 	break;
 
       case ITEM_ID_TYPE_NAME:
-	// TODO
+	evaluation_stack.push_back( operand_type( iter->name ) );
 	break;
 
       case ITEM_ID_TYPE_OP_NOT:
 	if ( evaluation_stack.empty() ) {
 	  return false;
 	}
-	evaluation_stack.back() = ((evaluation_stack.back() == 0.0) ? 1.0 : 0.0);
+	evaluation_stack.back().set_value( ((evaluation_stack.back().get_value( variables ) == 0.0) ? 1.0 : 0.0) );
 	break;
 
       case ITEM_ID_TYPE_OP_NEGATE:
 	if ( evaluation_stack.empty() ) {
 	  return false;
 	}
-	evaluation_stack.back() = -1.0 * (evaluation_stack.back());
+	evaluation_stack.back().set_value( -1.0 * (evaluation_stack.back().get_value( variables )) );
 	break;
 
       case ITEM_ID_TYPE_OP_ADD:
@@ -1010,9 +1035,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  double result = *(evaluation_stack.rbegin() + 1) + *(evaluation_stack.rbegin());
+	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) + (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result;
+	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
@@ -1021,9 +1046,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  double result = *(evaluation_stack.rbegin() + 1) - *(evaluation_stack.rbegin());
+	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) - (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result;
+	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
@@ -1033,9 +1058,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	}
 	{
 	  // TODO. check for div-by-zero
-	  double result = *(evaluation_stack.rbegin() + 1) / *(evaluation_stack.rbegin());
+	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) / (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result;
+	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
@@ -1044,9 +1069,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  double result = *(evaluation_stack.rbegin() + 1) * *(evaluation_stack.rbegin());
+	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) * (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result;
+	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
@@ -1055,9 +1080,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) == *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) == (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1066,9 +1091,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) != *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) != (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1077,9 +1102,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) >= *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) >= (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1088,9 +1113,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) > *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) > (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1099,9 +1124,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) <= *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) <= (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1110,9 +1135,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = *(evaluation_stack.rbegin() + 1) < *(evaluation_stack.rbegin());
+	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) < (evaluation_stack.rbegin())->get_value( variables );
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1121,9 +1146,9 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) && (*(evaluation_stack.rbegin()) != 0.0);
+	  bool result = ((evaluation_stack.rbegin() + 1)->get_value( variables ) != 0.0) && ((evaluation_stack.rbegin())->get_value( variables ) != 0.0);
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
@@ -1132,20 +1157,44 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  return false;
 	}
 	{
-	  bool result = (*(evaluation_stack.rbegin() + 1) != 0.0) || (*(evaluation_stack.rbegin()) != 0.0);
+	  bool result = ((evaluation_stack.rbegin() + 1)->get_value( variables ) != 0.0) || ((evaluation_stack.rbegin())->get_value( variables ) != 0.0);
 	  evaluation_stack.pop_back();
-	  evaluation_stack.back() = result ? 1.0 : 0.0;
+	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_ASSIGN:
-	// TODO. assign the value to the variable
-	// 
+	{
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+	  if ( (evaluation_stack.rbegin() + 1)->type != DATA_TYPE_NAME ) {
+	    return false;
+	  }
+	  std::map<std::string,double>::iterator iter = variables.find( (evaluation_stack.rbegin() + 1)->name );
+	  if ( iter == variables.end() ) {
+	    return false;
+	  }
+	
+	  bool new_value = evaluation_stack.rbegin()->get_value( variables );
+	  evaluation_stack.pop_back();
+
+	  iter->second = new_value;
+	}
 	break;
 
       case ITEM_ID_TYPE_OP_CREATE_DOUBLE:
-	// TODO. create this variable in the variables map
+	if ( evaluation_stack.empty() ) {
+	  return false;
+	}
+	if ( evaluation_stack.back().type != DATA_TYPE_NAME ) {
+	  return false;
+	}
+	
+	// TODO. error if variable already exists...
 	//
+	variables.insert( std::make_pair( evaluation_stack.back().name, 0.0 ) );
+	
 	break;
 
       }
@@ -1156,12 +1205,12 @@ bool evaluate( const std::vector<item_data_type> &expression )
     // Check if the current item is a 'short-circuit' item.
     // If so, short-circuit as needed
     //
-    if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back() != 0.0 ) {
+    if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back().get_value( variables ) != 0.0 ) {
       //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
       short_circuit_chain_mode = true;
       iter_increment = iter->short_circuit_offset;
     }
-    else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back() == 0.0 ) {
+    else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back().get_value( variables ) == 0.0 ) {
       //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
       short_circuit_chain_mode = true;
       iter_increment = iter->short_circuit_offset;
@@ -1177,7 +1226,7 @@ bool evaluate( const std::vector<item_data_type> &expression )
   }
 
   if ( !evaluation_stack.empty() ) {
-    std::cout << " => " << evaluation_stack.back() << "\n";
+    std::cout << " => " << evaluation_stack.back().get_value( variables ) << "\n";
   }
 
   return true;
@@ -1225,7 +1274,7 @@ int main( int argc, char* argv[] )
       }
 
       if ( !evaluate( *iter ) ) {
-	// TODO. error
+	std::cerr << "ERROR: evaluation error\n";
       }
     }
   }
