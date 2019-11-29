@@ -266,20 +266,6 @@ namespace {
       ,type( DATA_TYPE_NAME )
     {}
 
-    double get_value( const std::map<std::string,double> &variables )
-    {
-      if ( type == DATA_TYPE_VALUE ) {
-	return value;
-      }
-      else {
-	std::map<std::string,double>::const_iterator iter = variables.find( name );
-	if ( iter == variables.end() ) {
-	  // TODO. error!
-	}
-	return iter->second;
-      }
-    }
-
     bool get_value( const std::map<std::string,double> &variables, double *out_value )
     {
       if ( type == DATA_TYPE_VALUE ) {
@@ -338,7 +324,7 @@ namespace {
 				   ,item_id_type                              item_id
 				   )
   {
-    //std::cout << "DEBUG: saw " << operator_data[ item_data.id ].text << "\n";
+    // std::cout << "DEBUG: saw " << operator_data[ itemid ].text << "\n";
 
     if ( item_id == ITEM_ID_TYPE_OP_LPARENS ) {
       
@@ -480,7 +466,7 @@ namespace {
 bool process( char c )
 {
   ++char_no_;
-  
+
   // Stage 1: Tokenize
   //
   
@@ -785,25 +771,6 @@ bool process( char c )
       switch ( parse_mode_ ) {
 	
       case PARSE_MODE_START:
-	// TODO. handle variable declarations
-	//
-	// START -> 'double' -> PARSE_MODE_NAME_EXPECTED -> name -> PARSE_MODE_VAR_DEFINITION_START -> ';' -> finished
-	//                                                                                          -> '=' -> PARSE_MODE_OPERAND_EXPECTED
-	//                                                                                          -> error
-	//
-	// OR
-	//  treat 'double' as a unary operator, that happens to
-	//   require a 'name' as an operand, then an '=' operator
-	//   (if anything follows)
-	//
-	// double x = 9;
-	//
-	// x, create, 9, =
-	//
-	// double y = x = 10;
-	//
-	// y, create, x, 10, =, =
-	//
 	if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	  if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
 	    update_stacks_with_operator( expressions_, current_expression_, operator_stack_, lparens_, ITEM_ID_TYPE_OP_CREATE_DOUBLE );
@@ -814,7 +781,7 @@ bool process( char c )
 	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	  }
 	}
-	if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+	else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
 	  current_expression_.emplace_back( std::atof( last_token.text.c_str() ) );
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
@@ -986,14 +953,12 @@ bool process( char c )
 }
 
 
-bool evaluate( const std::vector<item_data_type> &expression )
+bool evaluate(
+	      const std::vector<item_data_type> &expression
+	      ,std::map<std::string,double>      &variables
+	      )
 {
-  std::map<std::string,double> variables;
   std::vector<operand_type> evaluation_stack;
-
-  // TODO. evaluation stack needs to hold either numbers or names
-  // Names need to be resolved into values at the time they are accessed
-  //
 
   bool    short_circuit_chain_mode = false;
   size_t  iter_increment           = 1U;
@@ -1017,147 +982,323 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	break;
 
       case ITEM_ID_TYPE_OP_NOT:
-	if ( evaluation_stack.empty() ) {
-	  return false;
+	{
+	  if ( evaluation_stack.empty() ) {
+	    return false;
+	  }
+	  
+	  double value;
+	  bool value_found = evaluation_stack.back().get_value( variables, &value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  
+	  evaluation_stack.back().set_value( (value == 0.0) ? 1.0 : 0.0 );
 	}
-	evaluation_stack.back().set_value( ((evaluation_stack.back().get_value( variables ) == 0.0) ? 1.0 : 0.0) );
 	break;
 
       case ITEM_ID_TYPE_OP_NEGATE:
-	if ( evaluation_stack.empty() ) {
-	  return false;
+	{
+	  if ( evaluation_stack.empty() ) {
+	    return false;
+	  }
+	  
+	  double value;
+	  bool value_found = evaluation_stack.back().get_value( variables, &value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  
+	  evaluation_stack.back().set_value( -1.0 * value );
 	}
-	evaluation_stack.back().set_value( -1.0 * (evaluation_stack.back().get_value( variables )) );
 	break;
 
       case ITEM_ID_TYPE_OP_ADD:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) + (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+	  
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  double result = value1 + value2;
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_SUBTRACT:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) - (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  double result = value1 - value2;
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result );
+
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_DIVIDE:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  // TODO. check for div-by-zero
-	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) / (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  if ( value2 == 0.0 ) {
+	    return false;
+	  }
+
+	  double result = value1 / value2;
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_MULTIPLY:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  double result = (evaluation_stack.rbegin() + 1)->get_value( variables ) * (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  double result = value1 * value2;
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_EQ:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) == (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 == value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_NEQ:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) != (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 != value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_GE:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) >= (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 >= value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_GT:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) > (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 > value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_LE:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) <= (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 <= value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_LT:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = (evaluation_stack.rbegin() + 1)->get_value( variables ) < (evaluation_stack.rbegin())->get_value( variables );
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+	  double value2;
+	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	  if ( !value2_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 < value2 );
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_AND:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = ((evaluation_stack.rbegin() + 1)->get_value( variables ) != 0.0) && ((evaluation_stack.rbegin())->get_value( variables ) != 0.0);
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 != 0.0 );
+	  if ( result ) {
+	    double value2;
+	    bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	    if ( !value2_found ) {
+	      return false;
+	    }
+
+	    result &= (value2 != 0.0);
+	  }
+
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_OR:
-	if ( evaluation_stack.size() < 2 ) {
-	  return false;
-	}
 	{
-	  bool result = ((evaluation_stack.rbegin() + 1)->get_value( variables ) != 0.0) || ((evaluation_stack.rbegin())->get_value( variables ) != 0.0);
+	  if ( evaluation_stack.size() < 2 ) {
+	    return false;
+	  }
+
+	  double value1;
+	  bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
+	  if ( !value1_found ) {
+	    return false;
+	  }
+
+	  bool result = ( value1 != 0.0 );
+	  if ( !result ) {
+	    double value2;
+	    bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
+	    if ( !value2_found ) {
+	      return false;
+	    }
+
+	    result |= (value2 != 0.0);
+	  }
+
 	  evaluation_stack.pop_back();
 	  evaluation_stack.back().set_value( result ? 1.0 : 0.0 );
 	}
@@ -1175,26 +1316,33 @@ bool evaluate( const std::vector<item_data_type> &expression )
 	  if ( iter == variables.end() ) {
 	    return false;
 	  }
-	
-	  bool new_value = evaluation_stack.rbegin()->get_value( variables );
-	  evaluation_stack.pop_back();
 
+	  double new_value;
+	  bool value_found = evaluation_stack.rbegin()->get_value( variables, &new_value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  evaluation_stack.pop_back();
 	  iter->second = new_value;
 	}
 	break;
 
       case ITEM_ID_TYPE_OP_CREATE_DOUBLE:
-	if ( evaluation_stack.empty() ) {
-	  return false;
+	{
+	  if ( evaluation_stack.empty() ) {
+	    return false;
+	  }
+	  if ( evaluation_stack.back().type != DATA_TYPE_NAME ) {
+	    return false;
+	  }
+
+	  std::map<std::string,double>::iterator iter = variables.find( evaluation_stack.back().name );
+	  if ( iter != variables.end() ) {
+	    return false;
+	  }
+
+	  variables.insert( std::make_pair( evaluation_stack.back().name, 0.0 ) );
 	}
-	if ( evaluation_stack.back().type != DATA_TYPE_NAME ) {
-	  return false;
-	}
-	
-	// TODO. error if variable already exists...
-	//
-	variables.insert( std::make_pair( evaluation_stack.back().name, 0.0 ) );
-	
 	break;
 
       }
@@ -1205,28 +1353,52 @@ bool evaluate( const std::vector<item_data_type> &expression )
     // Check if the current item is a 'short-circuit' item.
     // If so, short-circuit as needed
     //
-    if ( iter->short_circuit == SHORT_CIRCUIT_TRUE && evaluation_stack.back().get_value( variables ) != 0.0 ) {
-      //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
-      short_circuit_chain_mode = true;
-      iter_increment = iter->short_circuit_offset;
+    bool do_short_circuit = false;
+
+    if ( iter->short_circuit == SHORT_CIRCUIT_TRUE ) {
+      double value;
+      bool value_found = evaluation_stack.back().get_value( variables, &value );
+      if ( !value_found ) {
+	return false;
+      }
+
+      if ( value != 0.0 ) {
+	do_short_circuit = true;
+	short_circuit_chain_mode = true;
+	iter_increment = iter->short_circuit_offset;
+      }
     }
-    else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE && evaluation_stack.back().get_value( variables ) == 0.0 ) {
-      //std::cout << "DEBUG: short-circuit TRUE jumping ahead " << iter->short_circuit_offset << "\n";
-      short_circuit_chain_mode = true;
-      iter_increment = iter->short_circuit_offset;
+    else if ( iter->short_circuit == SHORT_CIRCUIT_FALSE ) {
+      double value;
+      bool value_found = evaluation_stack.back().get_value( variables, &value );
+      if ( !value_found ) {
+	return false;
+      }
+
+      if ( value == 0.0 ) {
+	do_short_circuit = true;
+	short_circuit_chain_mode = true;
+	iter_increment = iter->short_circuit_offset;
+      }
     }
-    else if ( short_circuit_chain_mode ) {
+
+    if ( !do_short_circuit && short_circuit_chain_mode ) {
       // We were in short-circuit mode but have left, so we need
       // to "reprocess" this item
       short_circuit_chain_mode = false;
       iter_increment = 0U;
     }
-
+    
     
   }
 
   if ( !evaluation_stack.empty() ) {
-    std::cout << " => " << evaluation_stack.back().get_value( variables ) << "\n";
+    double value;
+    bool value_found = evaluation_stack.back().get_value( variables, &value );
+    if ( !value_found ) {
+      return false;
+    }
+    std::cout << " => " << value << "\n";
   }
 
   return true;
@@ -1257,6 +1429,9 @@ int main( int argc, char* argv[] )
   }
 
   if ( process_ok ) {
+
+    std::map<std::string,double> variables;
+
     // print out expressions to be evaluated
     //
     for ( std::vector<std::vector<item_data_type>>::iterator iter( expressions_.begin() )
@@ -1268,12 +1443,15 @@ int main( int argc, char* argv[] )
 	if ( iter2->id == ITEM_ID_TYPE_CONSTANT ) {
 	  std::cout << iter2->value << "\n";
 	}
+	else if ( iter2->id == ITEM_ID_TYPE_NAME ) {
+	  std::cout << iter2->name << "\n";
+	}
 	else {
 	  std::cout << operator_data[ iter2->id ].text << "\n";
 	}
       }
 
-      if ( !evaluate( *iter ) ) {
+      if ( !evaluate( *iter, variables ) ) {
 	std::cerr << "ERROR: evaluation error\n";
       }
     }
