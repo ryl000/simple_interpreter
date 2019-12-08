@@ -68,6 +68,10 @@ namespace {
     ,{ 0, ";" }
 
     ,{ 11, "create" }
+
+    ,{ 0,  "pop" }
+    ,{ 0,  "jnez" }
+    ,{ 0,  "jeqz" }
   };
 
 
@@ -137,6 +141,22 @@ namespace {
 
 	// If && or || is pushed into the current_statement_ stack, we need to resolve any previously-pushed
 	// JNEZ/JEQZ with the correct jump arg
+	//
+	// TODO. there is still a problem with "chained" short-circuits. Ex.
+	//  ( (1>2) || (3>4) || (5<6) || (7<8) || (9<10) )
+	//
+	// translates to:
+	//   1, 2, >, jnez(20), 3, 4, >, jnez(15), 5, 6, <, jnez(10), 7, 8, <, jnez(5), 9, 10, <, ||, ||, ||, ||
+	//
+	// After the 5<6 succeeds, we should "jump" to the very end. Instead
+	// we are still executing two trailing ORs
+	//
+	// what we probably need is:
+	//   1, 2, >, jnez(23), 3, 4, >, jnez(17), 5, 6, <, jnez(11), 7, 8, <, jnez(5), 9, 10, <, ||, jnez(6), ||, jnez(4), ||, jnez(2), ||
+	//
+	// or (do we even need to push the || into the stack??)
+	//   1, 2, >, jnez(16), 3, 4, >, jnez(12), 5, 6, <, jnez(8), 7, 8, <, jnez(4), 9, 10, <
+	//
 	//
 	if ( operator_stack.back().id == EVAL_ID_TYPE_OP_AND
 	     || operator_stack.back().id == EVAL_ID_TYPE_OP_OR ) {
@@ -707,3 +727,22 @@ bool parser_type::parse_char( char c )
 
   return true;
 }
+
+
+void print_statements( const std::vector<eval_data_type> &statement )
+{
+  for ( std::vector<eval_data_type>::const_iterator iter( statement.begin() )
+	  ; iter != statement.end()
+	  ; ++iter ) {
+    if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
+      std::cout << iter->value << "\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_PUSHN ) {
+      std::cout << iter->name << "\n";
+    }
+    else {
+      std::cout << operator_data[ iter->id ].text << "\n";
+    }
+  }
+}
+

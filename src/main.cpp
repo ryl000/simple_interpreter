@@ -64,6 +64,7 @@ int main( int argc, char* argv[] )
     for ( std::vector<std::vector<eval_data_type>>::const_iterator iter( parser.statements().begin() )
 	    ; iter != parser.statements().end()
 	    ; ++iter ) {
+      print_statements( *iter );
 #if 0
       for ( std::vector<eval_data_type>::const_iterator iter2( iter->begin() )
 	    ; iter2 != iter->end()

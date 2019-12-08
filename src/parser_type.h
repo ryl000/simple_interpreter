@@ -164,3 +164,7 @@ class parser_type {
   lex_mode_type                             lex_mode_;
   parse_mode_type                           parse_mode_;
 };
+
+
+void print_statements( const std::vector<eval_data_type> &statement );
+
