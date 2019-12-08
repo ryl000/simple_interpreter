@@ -88,8 +88,6 @@ bool evaluate(
 	  ; iter != expression.end()
 	  ; iter += iter_increment ) {
 
-    std::cout << "DEBUG: " << iter->id << "\n";
-
     iter_increment = 1U;
     
     switch ( iter->id ) {
@@ -490,7 +488,6 @@ bool evaluate(
 	}
 
 	if ( value != 0.0 ) {
-	  std::cout << "DEBUG: iter incr: " << iter->jump_arg << "\n";
 	  iter_increment = iter->jump_arg;
 	}
       }
@@ -509,7 +506,6 @@ bool evaluate(
 	}
 
 	if ( value == 0.0 ) {
-	  std::cout << "DEBUG: iter incr: " << iter->jump_arg << "\n";
 	  iter_increment = iter->jump_arg;
 	}
       }
@@ -526,6 +522,9 @@ bool evaluate(
       return false;
     }
     std::cout << " => " << value << "\n";
+    if ( evaluation_stack.size() > 1 ) {
+      std::cout << "WARNING: final stack size is " << evaluation_stack.size() << "\n";
+    }
   }
 
   return true;
