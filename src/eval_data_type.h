@@ -26,8 +26,8 @@
 
 
 enum eval_id_type {
-  EVAL_ID_TYPE_CONSTANT = 0
-  ,EVAL_ID_TYPE_NAME
+  EVAL_ID_TYPE_PUSHD = 0
+  ,EVAL_ID_TYPE_PUSHN
   
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
@@ -58,13 +58,10 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_SEMICOLON
 
   ,EVAL_ID_TYPE_OP_CREATE_DOUBLE
-};
 
-
-enum short_circuit_type {
-  SHORT_CIRCUIT_NONE
-  ,SHORT_CIRCUIT_FALSE
-  ,SHORT_CIRCUIT_TRUE
+  ,EVAL_ID_TYPE_OP_POP
+  ,EVAL_ID_TYPE_OP_JNEZ
+  ,EVAL_ID_TYPE_OP_JEQZ
 };
 
 
@@ -73,30 +70,30 @@ struct eval_data_type {
   explicit eval_data_type( double in_value )
     :value( in_value )
     ,name()
-    ,id( EVAL_ID_TYPE_CONSTANT )
-    ,short_circuit( SHORT_CIRCUIT_NONE )
-    ,short_circuit_offset( 0U )
+    ,id( EVAL_ID_TYPE_PUSHD )
+    ,jump_arg( 0U )
+    ,pop_arg( 0U )
   {}
 
   explicit eval_data_type( const std::string &in_name )
     :value( 0.0 )
     ,name( in_name )
-    ,id( EVAL_ID_TYPE_NAME )
-    ,short_circuit( SHORT_CIRCUIT_NONE )
-    ,short_circuit_offset( 0U )
+    ,id( EVAL_ID_TYPE_PUSHN )
+    ,jump_arg( 0U )
+    ,pop_arg( 0U )
   {}
 
   explicit eval_data_type( eval_id_type in_id )
     :value( 0.0 )
     ,name()
     ,id( in_id )
-    ,short_circuit( SHORT_CIRCUIT_NONE )
-    ,short_circuit_offset( 0U )
+    ,jump_arg( 0U )
+    ,pop_arg( 0U )
   {}
   
   double              value;
   std::string         name;
   eval_id_type        id;
-  short_circuit_type  short_circuit;
-  size_t              short_circuit_offset;
+  size_t              jump_arg;
+  size_t              pop_arg;
 };

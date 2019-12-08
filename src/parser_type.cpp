@@ -135,16 +135,17 @@ namespace {
 	//std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into current_statement stack\n";
 	current_statement.emplace_back( operator_stack.back() );
 
-	// If && or || is pushed into the current_statement_ stack, we need to resolve any previously-tagged
-	// operators with the correct short circuit offset
+	// If && or || is pushed into the current_statement_ stack, we need to resolve any previously-pushed
+	// JNEZ/JEQZ with the correct jump arg
+	//
 	if ( operator_stack.back().id == EVAL_ID_TYPE_OP_AND
 	     || operator_stack.back().id == EVAL_ID_TYPE_OP_OR ) {
-	  size_t short_circuit_index = operator_stack.back().short_circuit_offset;
+	  size_t jump_idx = operator_stack.back().jump_arg;
 	  // TODO. guard against invalid index?
 	  // TODO. guard against invalid offset calc?
-	  current_statement[ short_circuit_index ].short_circuit_offset = current_statement.size() - short_circuit_index;
+	  current_statement[ jump_idx ].jump_arg = current_statement.size() - jump_idx;
 	  //std::cout << "DEBUG: fixing up index " << short_circuit_index << " offset to " << (current_statement.size() - short_circuit_index) << "\n";
-	  current_statement.back().short_circuit_offset = 0U;
+	  current_statement.back().jump_arg = 0U;
 	}
 
 	operator_stack.pop_back();
@@ -167,21 +168,18 @@ namespace {
 	//std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
 	operator_stack.emplace_back( eval_data_type( eval_id ) );
 
-	// If && or ||, we need to "tag" the highest item in the current_statement_ stack,
-	//  for purposes of resolving any short-circuit.
-	// NOTE that we are using the "short circuit offset" field in the && or || to
-	//  store the location of the associated operator. This is faster than
+	// If && or ||, we need to add a JEQZ/JNEZ into the current statement, to handle short-circuits
+	// NOTE that we are using the "jump arg" field in the && or || to
+	//  store the location of the associated JEQZ/JNEZ. This is faster than
 	//  searching backwards at the time the && or || is pushed into the current_statement stack
 	//
 	if ( eval_id == EVAL_ID_TYPE_OP_AND ) {
-	  // TODO. guard against empty current_statement?
-	  current_statement.back().short_circuit = SHORT_CIRCUIT_FALSE;
-	  operator_stack.back().short_circuit_offset = current_statement.size() - 1U;
+	  current_statement.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
+	  operator_stack.back().jump_arg = current_statement.size() - 1U;
 	}
 	else if ( eval_id == EVAL_ID_TYPE_OP_OR ) {
-	  // TODO. guard against empty current_statement?
-	  current_statement.back().short_circuit = SHORT_CIRCUIT_TRUE;
-	  operator_stack.back().short_circuit_offset = current_statement.size() - 1U;
+	  current_statement.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JNEZ ) );
+	  operator_stack.back().jump_arg = current_statement.size() - 1U;
 	}
 	
       }
