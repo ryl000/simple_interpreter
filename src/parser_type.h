@@ -90,13 +90,23 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_NOT
 
+    ,TOKEN_ID_TYPE_COMMA
+
+    ,TOKEN_ID_TYPE_LPARENS
+    ,TOKEN_ID_TYPE_RPARENS
+
+    ,TOKEN_ID_TYPE_SEMICOLON
+
+    ,TOKEN_ID_TYPE_LCURLY_BRACE
+    ,TOKEN_ID_TYPE_RCURLY_BRACE
+
     // NOTE: from this point down,
     //  it is assumed these enums match up
-    //  with eval_id_type
+    //  with eval_id_type.
     //
-    // TODO. move this to bottom of list
-    //
-    ,TOKEN_ID_TYPE_PLUS
+    ,TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD
+    
+    ,TOKEN_ID_TYPE_PLUS = TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD
     ,TOKEN_ID_TYPE_MINUS
 
     ,TOKEN_ID_TYPE_DIVIDE
@@ -114,16 +124,7 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_ASSIGN
 
-    ,TOKEN_ID_TYPE_COMMA
-
-    ,TOKEN_ID_TYPE_LPARENS
-    ,TOKEN_ID_TYPE_RPARENS
-
-    ,TOKEN_ID_TYPE_SEMICOLON
-
-    ,TOKEN_ID_TYPE_LCURLY_BRACE
-    ,TOKEN_ID_TYPE_RCURLY_BRACE
-  };
+};
 
   
 

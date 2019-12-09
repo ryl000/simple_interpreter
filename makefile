@@ -1,6 +1,10 @@
 sinterp: evaluate.o parser_type.o main.o
 	g++ -o sinterp main.o evaluate.o parser_type.o
 
+.PHONY: clean
+clean:
+	rm *.o sinterp
+
 evaluate.o : src/evaluate.cpp
 	g++ -std=c++17 -c src/evaluate.cpp
 

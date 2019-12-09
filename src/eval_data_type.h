@@ -32,13 +32,27 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
   
+  ,EVAL_ID_TYPE_OP_COMMA
+
+  ,EVAL_ID_TYPE_OP_LPARENS
+  ,EVAL_ID_TYPE_OP_RPARENS
+
+  ,EVAL_ID_TYPE_OP_SEMICOLON
+
+  ,EVAL_ID_TYPE_OP_CREATE_DOUBLE
+
+  ,EVAL_ID_TYPE_OP_CLEAR
+  ,EVAL_ID_TYPE_OP_POP
+  ,EVAL_ID_TYPE_OP_JNEZ
+  ,EVAL_ID_TYPE_OP_JEQZ
+
   // NOTE: from this point down,
   //  it is assumed these enums match up
   //  with token_id_type
   //
-  // TODO. move this to bottom of list
-  //
-  ,EVAL_ID_TYPE_OP_ADD
+  ,EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD
+  
+  ,EVAL_ID_TYPE_OP_ADD = EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD
   ,EVAL_ID_TYPE_OP_SUBTRACT
 
   ,EVAL_ID_TYPE_OP_DIVIDE
@@ -56,31 +70,6 @@ enum eval_id_type {
   
   ,EVAL_ID_TYPE_OP_ASSIGN
 
-  // NOTE: from this point down,
-  //  these enums have a token_id_type
-  //  equivalent, but should really never
-  //  be actually generated
-  //
-  ,EVAL_ID_TYPE_OP_COMMA
-
-  ,EVAL_ID_TYPE_OP_LPARENS
-  ,EVAL_ID_TYPE_OP_RPARENS
-
-  ,EVAL_ID_TYPE_OP_SEMICOLON
-
-  ,EVAL_ID_TYPE_OP_LCURLY_BRACE
-  ,EVAL_ID_TYPE_OP_RCURLY_BRACE
-
-  // NOTE: from this point down, these
-  //  enums are 'unique' to eval_id_type
-  //  (they are not 'translated' from token_id_type)
-  //
-  ,EVAL_ID_TYPE_OP_CREATE_DOUBLE
-
-  ,EVAL_ID_TYPE_OP_CLEAR
-  ,EVAL_ID_TYPE_OP_POP
-  ,EVAL_ID_TYPE_OP_JNEZ
-  ,EVAL_ID_TYPE_OP_JEQZ
 };
 
 

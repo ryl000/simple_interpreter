@@ -36,39 +36,18 @@ namespace {
   // NOTE: needs to match up with eval_id_type enum
   //
   const operator_data_type operator_data[] = {
-    { 0, "(constant)" }
-    ,{ 0, "(name)" }
-   
-    ,{ 10, "!" }
-    ,{ 10, "neg" }
-   
-    ,{ 8, "+" }
-    ,{ 8, "-" }
+    { 0, "push double" }
+    ,{ 0, "push name" }
 
-    ,{ 9, "/" }
-    ,{ 9, "*" }
+    ,{ 10, "not" }
+    ,{ 10, "negate" }
    
-    ,{ 6, "==" }
-    ,{ 6, "!=" }
-    ,{ 7, ">=" }
-    ,{ 7, ">" }
-    ,{ 7, "<=" }
-    ,{ 7, "<" }
-   
-    ,{ 5, "&&" }
-    ,{ 4, "||" }
-   
-    ,{ 3, "=" }
-   
-    ,{ 2, "," }
+    ,{ 2, "comma" }
 
     ,{ 1, "(" }
     ,{ 1, ")" }
 
     ,{ 0, ";" }
-
-    ,{ 0, "{" }
-    ,{ 0, "}" }
 
     ,{ 11, "create" }
 
@@ -76,6 +55,25 @@ namespace {
     ,{ 0,  "pop" }
     ,{ 0,  "jnez" }
     ,{ 0,  "jeqz" }
+
+    ,{ 8, "add" }
+    ,{ 8, "subtract" }
+
+    ,{ 9, "divide" }
+    ,{ 9, "mutliply" }
+   
+    ,{ 6, "eq" }
+    ,{ 6, "ne" }
+    ,{ 7, "ge" }
+    ,{ 7, "gt" }
+    ,{ 7, "le" }
+    ,{ 7, "lt" }
+   
+    ,{ 5, "and" }
+    ,{ 4, "or" }
+   
+    ,{ 3, "assign" }
+   
   };
 
 
@@ -215,11 +213,7 @@ bool parser_type::token_id_to_eval_id_(
   bool rv = false;
 
   if ( token_id >= TOKEN_ID_TYPE_PLUS ) {
-    *eval_id = static_cast<eval_id_type>( token_id + 1 );
-    rv = true;
-  }
-  else if ( token_id == TOKEN_ID_TYPE_NOT ) {
-    *eval_id = EVAL_ID_TYPE_OP_NOT;
+    *eval_id = static_cast<eval_id_type>( token_id + EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD - TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD );
     rv = true;
   }
 
