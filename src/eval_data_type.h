@@ -32,6 +32,12 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
   
+  // NOTE: from this point down,
+  //  it is assumed these enums match up
+  //  with token_id_type
+  //
+  // TODO. move this to bottom of list
+  //
   ,EVAL_ID_TYPE_OP_ADD
   ,EVAL_ID_TYPE_OP_SUBTRACT
 
@@ -50,6 +56,11 @@ enum eval_id_type {
   
   ,EVAL_ID_TYPE_OP_ASSIGN
 
+  // NOTE: from this point down,
+  //  these enums have a token_id_type
+  //  equivalent, but should really never
+  //  be actually generated
+  //
   ,EVAL_ID_TYPE_OP_COMMA
 
   ,EVAL_ID_TYPE_OP_LPARENS
@@ -57,6 +68,13 @@ enum eval_id_type {
 
   ,EVAL_ID_TYPE_OP_SEMICOLON
 
+  ,EVAL_ID_TYPE_OP_LCURLY_BRACE
+  ,EVAL_ID_TYPE_OP_RCURLY_BRACE
+
+  // NOTE: from this point down, these
+  //  enums are 'unique' to eval_id_type
+  //  (they are not 'translated' from token_id_type)
+  //
   ,EVAL_ID_TYPE_OP_CREATE_DOUBLE
 
   ,EVAL_ID_TYPE_OP_CLEAR

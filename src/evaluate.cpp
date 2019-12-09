@@ -463,6 +463,10 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_CLEAR:
+      evaluation_stack.clear();
+      break;
+      
     case EVAL_ID_TYPE_OP_POP:
       {
 	if ( evaluation_stack.size() < iter->pop_arg ) {

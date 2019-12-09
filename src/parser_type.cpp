@@ -67,6 +67,9 @@ namespace {
 
     ,{ 0, ";" }
 
+    ,{ 0, "{" }
+    ,{ 0, "}" }
+
     ,{ 11, "create" }
 
     ,{ 0,  "clear-stack" }
@@ -84,7 +87,7 @@ namespace {
 				   ,eval_id_type                              eval_id
 				   )
   {
-    // std::cout << "DEBUG: saw " << operator_data[ itemid ].text << "\n";
+    // std::cout << "DEBUG: saw " << eval_id << "\n";
 
     if ( eval_id == EVAL_ID_TYPE_OP_LPARENS ) {
       

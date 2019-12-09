@@ -90,6 +90,12 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_NOT
 
+    // NOTE: from this point down,
+    //  it is assumed these enums match up
+    //  with eval_id_type
+    //
+    // TODO. move this to bottom of list
+    //
     ,TOKEN_ID_TYPE_PLUS
     ,TOKEN_ID_TYPE_MINUS
 

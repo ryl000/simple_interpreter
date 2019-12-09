@@ -101,7 +101,7 @@ int main( int argc, char* argv[] )
 	    ; iter != parser.statements().end()
 	    ; ++iter ) {
 
-      //print_statements( *iter );
+      // print_statements( *iter );
       
       if ( !evaluate( *iter, variables ) ) {
 	std::cerr << "ERROR: evaluation error\n";
