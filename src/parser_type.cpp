@@ -281,6 +281,12 @@ bool parser_type::parse_char( char c )
       else if ( c == ';' ) {
 	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );
       }
+      else if ( c == '{' ) {
+	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );
+      }
+      else if ( c == '}' ) {
+	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );
+      }
       else if ( c == '=' ) {
 	lex_mode_ = LEX_MODE_EQ_CHECK;
       }
@@ -567,6 +573,17 @@ bool parser_type::parse_char( char c )
 	else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
 	  // Nothing needs to be done; stay in this mode
 	}
+	else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
+	  ++curly_braces_;
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
+	  if ( curly_braces_ == 0U ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  else {
+	    --curly_braces_;
+	  }
+	}
 	else {
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
@@ -705,6 +722,16 @@ bool parser_type::parse_char( char c )
   if ( c == '\0' ) {
     if ( parse_mode_ != PARSE_MODE_START ) {
       std::cerr << "ERROR: parse not terminated correctly\n";
+      return false;
+    }
+
+    if ( curly_braces_ ) {
+      std::cerr << "ERROR: mismatched curly braces\n";
+      return false;
+    }
+
+    if ( !lparens_.empty() ) {
+      std::cerr << "ERROR: mismatched parenthesis\n";
       return false;
     }
   }

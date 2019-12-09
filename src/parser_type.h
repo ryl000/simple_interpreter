@@ -39,6 +39,7 @@ class parser_type {
     ,operator_stack_()
     ,tokens_()
     ,char_no_(0U)
+    ,curly_braces_(0U)
     ,line_no_(0U)
     ,tokens_parsed_(0U)
     ,lex_mode_( LEX_MODE_START )
@@ -113,6 +114,9 @@ class parser_type {
     ,TOKEN_ID_TYPE_RPARENS
 
     ,TOKEN_ID_TYPE_SEMICOLON
+
+    ,TOKEN_ID_TYPE_LCURLY_BRACE
+    ,TOKEN_ID_TYPE_RCURLY_BRACE
   };
 
   
@@ -158,6 +162,7 @@ class parser_type {
   std::vector<token_type>                   tokens_;
 
   size_t                                    char_no_;
+  size_t                                    curly_braces_;
   size_t                                    line_no_;
   size_t                                    tokens_parsed_;
 
