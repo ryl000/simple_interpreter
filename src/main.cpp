@@ -20,6 +20,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -37,15 +39,49 @@ int main( int argc, char* argv[] )
     std::cerr << "ERROR: missing argument\n";
     return 1;
   }
+
+  bool cmd_line_mode = false;
+  // handle command-line options
+  size_t iarg = 1U;
+  for ( ; iarg < argc; ++iarg ) {
+    if ( argv[iarg][0] != '-' ) {
+      break;
+    }
+    if ( std::strcmp( argv[iarg], "--" ) == 0U ) {
+      break;
+    }
+    if ( std::strcmp( argv[iarg], "-c" ) == 0U ) {
+      cmd_line_mode = true;
+    }
+  }
+
+  if ( iarg >= argc ) {
+    std::cerr << "ERROR: missing argument(s)\n";
+    return 1;
+  }
   
-  size_t i = 0U;
-  size_t in_length = std::strlen( argv[1] );
   bool process_ok = false;
 
   parser_type parser;
-  
-  while ( i < in_length && (process_ok = parser.parse_char( argv[1][i] )) ) {
-    ++i;
+
+  if ( cmd_line_mode ) {
+    size_t in_length = std::strlen( argv[iarg] );
+    size_t i = 0U;
+    while ( i < in_length && (process_ok = parser.parse_char( argv[iarg][i] )) ) {
+      ++i;
+    }
+  }
+  else {
+    std::ifstream infile( argv[iarg] );
+    if ( !infile ) {
+      std::cerr << "ERROR: could not open file " << argv[iarg] << "\n";
+      return 1;
+    }
+
+    char c;
+    while (infile.get(c) && (process_ok = parser.parse_char(c))) {
+      ;
+    }
   }
 
   if ( process_ok ) {
