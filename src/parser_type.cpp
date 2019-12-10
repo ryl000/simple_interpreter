@@ -545,6 +545,8 @@ bool parser_type::parse_char( char c )
     while ( tokens_parsed_ < tokens_.size() ) {
 
       std::cout << "DEBUG: " << parse_mode_ << "\n";
+
+      size_t current_statement_index = statements_.size();
 	
       const token_type &last_token = tokens_[tokens_parsed_];
       switch ( parse_mode_ ) {
@@ -819,6 +821,113 @@ bool parser_type::parse_char( char c )
 	break;
 
       }
+
+
+      // TODO. handle if parse mode stuff here?
+      // Instead of scattered inside the "general" parse mode
+      // stuff...
+      //
+#if 0
+      {
+	bool process_if_parse_mode = true;
+
+	while ( !if_parse_state_.empty() && process_if_parse_mode ) {
+
+	  process_if_parse_mode = false;
+	  
+	  switch ( if_parse_state_.back().mode ) {
+	  
+	  case IF_PARSE_MODE_IF:
+	    // If a closing parens was seen, go to CLAUSE mode,
+	    //  and put general parser back into START mode
+	    //
+	    if ( close_parens_found ) {
+	      // Push the jump that skips the (to follow) clause if the
+	      // if check fails
+	      statements.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
+
+	      // Keep a reference to this JEQZ, so later we can set the offset
+	      // appropriately
+	      //
+	      if_parse_state_.back().jump_offset = statements.size() - 1U;
+	    
+	      if_parse_state_.back().mode        = IF_PARSE_MODE_CLAUSE;
+
+	      // TODO. tricky... because we are in if parse mode,
+	      // need to drop back into start mode
+	      parse_mode_ = PARSE_MODE_START;
+	    }
+	    break;
+
+	  case IF_PARSE_MODE_IF_CLAUSE:
+	    // If a clause termination was seen,
+	    // go to else check
+	    // For clause termination, it's either a semi-colon
+	    // (if no curly brace was entered) or a matching
+	    // curly brace (if a starting curly brace was entered)
+	    //
+	    if ( clause_termination_found ) {
+	      if_parse_state_.back().mode = IF_PARSE_MODE_CHECK_ELSE;
+	    }
+	    break;
+
+	  case IF_PARSE_MODE_ELSE_CLAUSE:
+	    // If a clause termination was seen,
+	    // fix up jumps and go to end
+	    //
+	    if ( clause_termination_found ) {
+	      // Fix the jeqz associated with the previous if check, to jump to here
+	      //
+	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
+	      statements_[ jump_start_idx ].jump_arg = current_statement_index - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
+
+	      // TODO. this needs to possibly "unwind" multiple times...
+	      // This also means "clause_termination_found" needs to be re-evaluated??
+	      //
+	      if_parse_state_.pop_back();
+	      process_if_parse_mode = true;
+	    }
+	    break;
+
+	  case IF_PARSE_MODE_CHECK_ELSE:
+	    if ( else_seen ) {
+	      // Push an uncoditional jump at the end of the previous if clause,
+	      // and save a reference to it
+	      //
+	      size_t saved_index = statements_.size();
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+
+	      // Fix the jeqz associated with the previous if check, to jump to here
+	      //
+	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
+	      statements_[ jump_start_idx ].jump_arg = statements_.size() - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
+
+	      // And now "remember" the unconditional jump, for the next fix
+	      //
+	      if_parse_state_.back().jump_offset = saved_index;
+
+	      if_parse_state_.back().mode = IF_PARSE_ELSE_CLAUSE;
+	      parse_mode_ = PARSE_MODE_START;
+	    }
+	    else {
+	      // Fix the jeqz associated with the previous if check, to jump to here
+	      //
+	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
+	      statements_[ jump_start_idx ].jump_arg = current_statement_index - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
+
+	      // TODO. this needs to possibly "unwind" multiple times...
+	      if_parse_state_.pop_back();
+	      process_if_parse_mode = true;
+	    }
+	    break;
+	  
+	  }
+	
+	}
+
+      }
+#endif
+      
 
       ++tokens_parsed_;
     }
