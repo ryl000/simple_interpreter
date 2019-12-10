@@ -45,6 +45,7 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_POP
   ,EVAL_ID_TYPE_OP_JNEZ
   ,EVAL_ID_TYPE_OP_JEQZ
+  ,EVAL_ID_TYPE_OP_JMP
 
   // NOTE: from this point down,
   //  it is assumed these enums match up

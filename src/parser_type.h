@@ -37,6 +37,7 @@ class parser_type {
     ,lparens_()
     ,operator_stack_()
     ,tokens_()
+    ,if_parse_state_()
     ,char_no_(0U)
     ,curly_braces_(0U)
     ,line_no_(0U)
@@ -123,7 +124,7 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_ASSIGN
 
-};
+  };
 
   
 
@@ -155,17 +156,45 @@ class parser_type {
   };
 
 
+  enum if_parse_mode_type {
+    IF_PARSE_MODE_IF
+    ,IF_PARSE_MODE_CLAUSE
+    ,IF_PARSE_MODE_CHECK_ELSE
+  };
+
+
+  struct if_parse_state_type {
+    if_parse_state_type()
+      :mode( IF_PARSE_MODE_IF )
+      ,curly_braces( 0U )
+      ,jump_offset( 0U )
+    {}
+
+    if_parse_mode_type mode;
+    size_t             curly_braces;
+    size_t             jump_offset;
+  };
+
+
   bool token_id_to_eval_id_(
 			    token_id_type token_id
 			    ,eval_id_type *eval_id
 			    );
 
   
+  bool update_stacks_with_operator_(
+ 				    std::vector<eval_data_type>       &statements
+				   ,std::vector<eval_data_type>       &operator_stack
+				   ,std::vector<size_t>               &lparens
+				   ,eval_id_type                       eval_id
+				   );
+
   std::string                               current_token_;
   std::vector<eval_data_type>               statements_;
   std::vector<size_t>                       lparens_; // TODO. convert this to a deque?
   std::vector<eval_data_type>               operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                   tokens_;
+  std::vector<if_parse_state_type>          if_parse_state_;
 
   size_t                                    char_no_;
   size_t                                    curly_braces_;

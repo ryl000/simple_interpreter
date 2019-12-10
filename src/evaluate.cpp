@@ -88,6 +88,8 @@ bool evaluate(
 	  ; iter != expression.end()
 	  ; iter += iter_increment ) {
 
+    std::cout << "debug: exec " << iter->id << "\n";
+
     iter_increment = 1U;
     
     switch ( iter->id ) {
@@ -529,23 +531,16 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_JMP:
+      {
+	std::cout << "debug: jump " << iter->jump_arg << "\n";
+	iter_increment = iter->jump_arg;
+      }
+      break;
+      
     }
       
   }
-
-  #if 0
-  if ( !evaluation_stack.empty() ) {
-    double value;
-    bool value_found = evaluation_stack.back().get_value( variables, &value );
-    if ( !value_found ) {
-      return false;
-    }
-    std::cout << " => " << value << "\n";
-    if ( evaluation_stack.size() > 1 ) {
-      std::cout << "WARNING: final stack size is " << evaluation_stack.size() << "\n";
-    }
-  }
-  #endif
 
   return true;
 }

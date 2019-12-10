@@ -95,7 +95,7 @@ int main( int argc, char* argv[] )
 
     std::map<std::string,double> variables;
 
-    // print_statements( parser.statements() );
+    print_statements( parser.statements() );
       
     if ( !evaluate( parser.statements(), variables ) ) {
       std::cerr << "ERROR: evaluation error\n";
