@@ -464,7 +464,21 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_CLEAR:
-      evaluation_stack.clear();
+      {
+	// DEBUG
+	if ( !evaluation_stack.empty() ) {
+	  double value;
+	  bool value_found = evaluation_stack.back().get_value( variables, &value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  std::cout << " => " << value << "\n";
+	  if ( evaluation_stack.size() > 1 ) {
+	    std::cout << "WARNING: final stack size is " << evaluation_stack.size() << "\n";
+	  }
+	}
+	evaluation_stack.clear();
+      }
       break;
       
     case EVAL_ID_TYPE_OP_POP:
@@ -519,6 +533,7 @@ bool evaluate(
       
   }
 
+  #if 0
   if ( !evaluation_stack.empty() ) {
     double value;
     bool value_found = evaluation_stack.back().get_value( variables, &value );
@@ -530,6 +545,7 @@ bool evaluate(
       std::cout << "WARNING: final stack size is " << evaluation_stack.size() << "\n";
     }
   }
+  #endif
 
   return true;
 }

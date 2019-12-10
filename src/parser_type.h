@@ -33,7 +33,6 @@ class parser_type {
  public:
  parser_type()
    :current_token_()
-    ,current_statement_()
     ,statements_()
     ,lparens_()
     ,operator_stack_()
@@ -48,7 +47,7 @@ class parser_type {
 
   bool parse_char( char c );
 
-  const std::vector<std::vector<eval_data_type>> &statements() { return statements_; }
+  const std::vector<eval_data_type> &statements() { return statements_; }
 
   
  private:
@@ -152,6 +151,7 @@ class parser_type {
     ,PARSE_MODE_OPERATOR_EXPECTED
     ,PARSE_MODE_NAME_EXPECTED
     ,PARSE_MODE_VARIABLE_DEFINITION_START
+    ,PARSE_MODE_LPARENS_EXPECTED
   };
 
 
@@ -162,8 +162,7 @@ class parser_type {
 
   
   std::string                               current_token_;
-  std::vector<eval_data_type>               current_statement_;
-  std::vector<std::vector<eval_data_type>>  statements_;
+  std::vector<eval_data_type>               statements_;
   std::vector<size_t>                       lparens_; // TODO. convert this to a deque?
   std::vector<eval_data_type>               operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                   tokens_;

@@ -95,17 +95,10 @@ int main( int argc, char* argv[] )
 
     std::map<std::string,double> variables;
 
-    // print out expressions to be evaluated
-    //
-    for ( std::vector<std::vector<eval_data_type>>::const_iterator iter( parser.statements().begin() )
-	    ; iter != parser.statements().end()
-	    ; ++iter ) {
-
-      // print_statements( *iter );
+    // print_statements( parser.statements() );
       
-      if ( !evaluate( *iter, variables ) ) {
-	std::cerr << "ERROR: evaluation error\n";
-      }
+    if ( !evaluate( parser.statements(), variables ) ) {
+      std::cerr << "ERROR: evaluation error\n";
     }
   }
 
