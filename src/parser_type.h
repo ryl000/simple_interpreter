@@ -152,7 +152,6 @@ class parser_type {
     ,PARSE_MODE_OPERATOR_EXPECTED
     ,PARSE_MODE_NAME_EXPECTED
     ,PARSE_MODE_VARIABLE_DEFINITION_START
-    ,PARSE_MODE_LPARENS_EXPECTED
   };
 
 
@@ -176,6 +175,8 @@ class parser_type {
   };
 
 
+  bool statement_parser( const token_type &last_token );
+  
   bool token_id_to_eval_id_(
 			    token_id_type token_id
 			    ,eval_id_type *eval_id

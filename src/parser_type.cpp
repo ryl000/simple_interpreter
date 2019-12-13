@@ -79,6 +79,173 @@ namespace {
    
   };
 
+
+  enum grammar_mode_type {
+    GRAMMAR_MODE_STATEMENT_START
+    ,GRAMMAR_MODE_STATEMENT_END
+    ,GRAMMAR_MODE_IF_CLAUSE
+    ,GRAMMAR_MODE_IF_STATEMENT
+    ,GRAMMAR_MODE_ELSE_CHECK
+    ,GRAMMAR_MODE_STATEMENT
+    ,GRAMMAR_MODE_ERROR
+  };
+
+  std::vector<grammar_mode_type> grammar_mode_;
+  
+}
+
+
+bool parser_type::statement_parser( const token_type &last_token )
+{
+  size_t current_statement_index = statements_.size();
+
+  switch ( parse_mode_ ) {
+
+  case PARSE_MODE_START:
+    {
+      if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_CREATE_DOUBLE );
+	  parse_mode_ = PARSE_MODE_NAME_EXPECTED;
+	}
+	else {
+	  statements_.emplace_back( eval_data_type( last_token.text ) );
+	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	}
+      }
+      else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+	statements_.emplace_back( std::atof( last_token.text.c_str() ) );
+	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+      }
+      else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+		last_token.id == TOKEN_ID_TYPE_MINUS ||
+		last_token.id == TOKEN_ID_TYPE_NOT ) {
+	if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
+	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
+	}
+	else {
+	  // Nothing needs to be done for unary +
+	}
+	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+      }
+      else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
+	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+      }
+      else {
+	parse_mode_ = PARSE_MODE_ERROR;
+      }
+    }
+    break;
+      
+  case PARSE_MODE_OPERAND_EXPECTED:
+    if ( last_token.id == TOKEN_ID_TYPE_NUMBER
+	 || last_token.id == TOKEN_ID_TYPE_NAME ) {
+      if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+	statements_.emplace_back( std::atof( last_token.text.c_str() ) );
+      }
+      else {
+	// TODO. guard against keywords
+	statements_.emplace_back( eval_data_type( last_token.text ) );
+      }
+      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+    }
+    else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+	      last_token.id == TOKEN_ID_TYPE_MINUS ||
+	      last_token.id == TOKEN_ID_TYPE_NOT ) {
+      if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
+      }
+      else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
+	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
+      }
+      else {
+	// Nothing needs to be done for unary +
+      }
+      // stay in this parse mode
+    }
+    else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+      update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
+      // stay in this parse mode
+    }
+    // TODO. allow RPARENS here? Tricky...
+    //  need to allow for (), but not (-)
+    //  Perhaps only allow for this in a function context?
+    else {
+      parse_mode_ = PARSE_MODE_ERROR;
+    }
+    break;
+      
+  case PARSE_MODE_OPERATOR_EXPECTED:
+    if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+	 last_token.id == TOKEN_ID_TYPE_MINUS ||
+	 last_token.id == TOKEN_ID_TYPE_DIVIDE ||
+	 last_token.id == TOKEN_ID_TYPE_MULTIPLY ||
+	 last_token.id == TOKEN_ID_TYPE_ASSIGN ||
+	 last_token.id == TOKEN_ID_TYPE_COMMA ||
+	 last_token.id == TOKEN_ID_TYPE_EQ ||
+	 last_token.id == TOKEN_ID_TYPE_GE ||
+	 last_token.id == TOKEN_ID_TYPE_GT ||
+	 last_token.id == TOKEN_ID_TYPE_LE ||
+	 last_token.id == TOKEN_ID_TYPE_LT ||
+	 last_token.id == TOKEN_ID_TYPE_NEQ ||
+	 last_token.id == TOKEN_ID_TYPE_AND ||
+	 last_token.id == TOKEN_ID_TYPE_OR ) {
+      eval_id_type new_eval_id_type;
+      if ( !token_id_to_eval_id_( last_token.id, &new_eval_id_type ) ) {
+	parse_mode_ = PARSE_MODE_ERROR;
+      }
+      else {
+	update_stacks_with_operator_( statements_, operator_stack_, lparens_, new_eval_id_type );
+	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+      }
+    }
+    else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+      if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_RPARENS ) ) {
+	parse_mode_ = PARSE_MODE_ERROR;
+      }
+    }
+    else {
+      parse_mode_ = PARSE_MODE_ERROR;
+    }
+    break;
+
+    
+  case PARSE_MODE_NAME_EXPECTED:
+    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+      // TODO. guard against keywords
+      statements_.emplace_back( eval_data_type( last_token.text ) );
+      parse_mode_ = PARSE_MODE_VARIABLE_DEFINITION_START;
+    }
+    else {
+      parse_mode_ = PARSE_MODE_ERROR;
+    }
+    break;
+
+
+  case PARSE_MODE_VARIABLE_DEFINITION_START:
+    if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+      if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_ASSIGN ) ) {
+	parse_mode_ = PARSE_MODE_ERROR;
+      }
+      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+    }
+    else {
+      parse_mode_ = PARSE_MODE_ERROR;
+    }
+    break;
+
+  }
+
+  if ( parse_mode_ == PARSE_MODE_ERROR ) {
+    return false;
+  }
+  else {
+    return true;
+  }
 }
 
 
@@ -184,16 +351,6 @@ bool parser_type::update_stacks_with_operator_(
     //
     if ( eval_id == EVAL_ID_TYPE_OP_RPARENS ) {
       lparens.pop_back();
-      if ( lparens.empty() ) {
-	if ( !if_parse_state_.empty() && if_parse_state_.back().mode == IF_PARSE_MODE_IF ) {
-	  if_parse_state_.back().jump_offset = statements.size();
-	  if_parse_state_.back().mode        = IF_PARSE_MODE_CLAUSE;
-	  statements.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
-	  // TODO. tricky... because we are in if parse mode,
-	  // need to drop back into start mode
-	  parse_mode_ = PARSE_MODE_START;
-	}
-      }
     }
 
     // Otherwise, if this is not a comma or semi-colon, add it to the
@@ -238,702 +395,434 @@ bool parser_type::parse_char( char c )
 {
   ++char_no_;
 
+  std::cout << "debug: parsing " << c << "\n";
+
   // Stage 1: Tokenize
   //
-  
-  bool reprocess  = false;
+  {
+    bool reprocess  = false;
 
-  do {
+    do {
     
-    switch ( lex_mode_ ) {
+      switch ( lex_mode_ ) {
 
-    case LEX_MODE_START:
-      reprocess = false;
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-	lex_mode_ = LEX_MODE_NUMBER_START_DIGIT;
-      }
-      else if ( c == '.' ) {
-	current_token_ += c;
-	lex_mode_ = LEX_MODE_NUMBER_START_DECIMAL;
-      }
-      else if ( c == '_' || std::isalpha( c ) ) {
-	current_token_ += c;
-	lex_mode_ = LEX_MODE_NAME_START;
-      }
-      else if ( std::isspace( c ) ) {
-	// skip, and stay in this mode
+      case LEX_MODE_START:
+	reprocess = false;
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	  lex_mode_ = LEX_MODE_NUMBER_START_DIGIT;
+	}
+	else if ( c == '.' ) {
+	  current_token_ += c;
+	  lex_mode_ = LEX_MODE_NUMBER_START_DECIMAL;
+	}
+	else if ( c == '_' || std::isalpha( c ) ) {
+	  current_token_ += c;
+	  lex_mode_ = LEX_MODE_NAME_START;
+	}
+	else if ( std::isspace( c ) ) {
+	  // skip, and stay in this mode
+	  if ( c == '\n' ) {
+	    ++line_no_;
+	  };
+	}
+	else if ( c == '+' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );
+	}
+	else if ( c == '-' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );
+	}
+	else if ( c == '/' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );
+	}
+	else if ( c == '*' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );
+	}
+	else if ( c == '(' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );
+	}
+	else if ( c == ')' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );
+	}
+	else if ( c == ',' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );
+	}
+	else if ( c == ';' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );
+	}
+	else if ( c == '{' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );
+	}
+	else if ( c == '}' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );
+	}
+	else if ( c == '=' ) {
+	  lex_mode_ = LEX_MODE_EQ_CHECK;
+	}
+	else if ( c == '>' ) {
+	  lex_mode_ = LEX_MODE_GT_CHECK;
+	}
+	else if ( c == '<' ) {
+	  lex_mode_ = LEX_MODE_LT_CHECK;
+	}
+	else if ( c == '!' ) {
+	  lex_mode_ = LEX_MODE_NOT_CHECK;
+	}
+	else if ( c == '&' ) {
+	  lex_mode_ = LEX_MODE_AND_CHECK;
+	}
+	else if ( c == '|' ) {
+	  lex_mode_ = LEX_MODE_OR_CHECK;
+	}
+	else if ( c == '#' ) {
+	  lex_mode_ = LEX_MODE_COMMENT;
+	}
+	else if ( c == '\0' ) {
+	  // end of input, nothing needs
+	  // to be done
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
+
+      case LEX_MODE_COMMENT:
 	if ( c == '\n' ) {
-	  ++line_no_;
-	};
-      }
-      else if ( c == '+' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );
-      }
-      else if ( c == '-' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );
-      }
-      else if ( c == '/' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );
-      }
-      else if ( c == '*' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );
-      }
-      else if ( c == '(' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );
-      }
-      else if ( c == ')' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );
-      }
-      else if ( c == ',' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );
-      }
-      else if ( c == ';' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );
-      }
-      else if ( c == '{' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );
-      }
-      else if ( c == '}' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );
-      }
-      else if ( c == '=' ) {
-	lex_mode_ = LEX_MODE_EQ_CHECK;
-      }
-      else if ( c == '>' ) {
-	lex_mode_ = LEX_MODE_GT_CHECK;
-      }
-      else if ( c == '<' ) {
-	lex_mode_ = LEX_MODE_LT_CHECK;
-      }
-      else if ( c == '!' ) {
-	lex_mode_ = LEX_MODE_NOT_CHECK;
-      }
-      else if ( c == '&' ) {
-	lex_mode_ = LEX_MODE_AND_CHECK;
-      }
-      else if ( c == '|' ) {
-	lex_mode_ = LEX_MODE_OR_CHECK;
-      }
-      else if ( c == '#' ) {
-	lex_mode_ = LEX_MODE_COMMENT;
-      }
-      else if ( c == '\0' ) {
-	// end of input, nothing needs
-	// to be done
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
+	  lex_mode_ = LEX_MODE_START;
+	}
+	break;
+      
+      case LEX_MODE_NUMBER_START_DIGIT:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	}
+	else if ( c == '.' ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
+	}
+	else if ( c == 'e' || c == 'E' ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-    case LEX_MODE_COMMENT:
-      if ( c == '\n' ) {
-	lex_mode_ = LEX_MODE_START;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
       
-    case LEX_MODE_NUMBER_START_DIGIT:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-      }
-      else if ( c == '.' ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
-      }
-      else if ( c == 'e' || c == 'E' ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
+      case LEX_MODE_NUMBER_START_DECIMAL:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_FRACTION;
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
+      
+      case LEX_MODE_NUMBER_DECIMAL:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_FRACTION;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
       
-    case LEX_MODE_NUMBER_START_DECIMAL:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_FRACTION;
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
-      
-    case LEX_MODE_NUMBER_DECIMAL:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_FRACTION;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
+      case LEX_MODE_NUMBER_FRACTION:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	}
+	else if ( c == 'e' || c == 'E' ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
       
-    case LEX_MODE_NUMBER_FRACTION:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-      }
-      else if ( c == 'e' || c == 'E' ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
-
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+      case LEX_MODE_NUMBER_EXPONENT:
+	if ( c == '+' || c == '-' ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_EXPONENT_SIGN;
+	}
+	else if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
       
-    case LEX_MODE_NUMBER_EXPONENT:
-      if ( c == '+' || c == '-' ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_EXPONENT_SIGN;
-      }
-      else if ( std::isdigit( c ) ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
+      case LEX_MODE_NUMBER_EXPONENT_SIGN:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	  lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
       
-    case LEX_MODE_NUMBER_EXPONENT_SIGN:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-	lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
-      
-    case LEX_MODE_NUMBER_EXPONENT_DIGIT:
-      if ( std::isdigit( c ) ) {
-	current_token_ += c;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
+      case LEX_MODE_NUMBER_EXPONENT_DIGIT:
+	if ( std::isdigit( c ) ) {
+	  current_token_ += c;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 	
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
-
-
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
       
-    case LEX_MODE_NAME_START:
-      if ( c == '_' || std::isalpha( c ) || std::isdigit( c ) ) {
-	current_token_ += c;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NAME, current_token_ ) );
+      case LEX_MODE_NAME_START:
+	if ( c == '_' || std::isalpha( c ) || std::isdigit( c ) ) {
+	  current_token_ += c;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NAME, current_token_ ) );
 	
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
 
-    case LEX_MODE_EQ_CHECK:
-      if ( c == '=' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_ASSIGN ) );
+      case LEX_MODE_EQ_CHECK:
+	if ( c == '=' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_ASSIGN ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
 
-    case LEX_MODE_GT_CHECK:
-      if ( c == '=' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GT ) );
+      case LEX_MODE_GT_CHECK:
+	if ( c == '=' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GT ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
 	
-    case LEX_MODE_LT_CHECK:
-      if ( c == '=' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LT ) );
+      case LEX_MODE_LT_CHECK:
+	if ( c == '=' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LT ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
 
-    case LEX_MODE_NOT_CHECK:
-      if ( c == '=' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NOT ) );
+      case LEX_MODE_NOT_CHECK:
+	if ( c == '=' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NOT ) );
 
-	current_token_.clear();
-	lex_mode_ = LEX_MODE_START;
-	reprocess     = true;
-      }
-      break;
+	  current_token_.clear();
+	  lex_mode_ = LEX_MODE_START;
+	  reprocess     = true;
+	}
+	break;
 
-    case LEX_MODE_AND_CHECK:
-      if ( c == '&' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
+      case LEX_MODE_AND_CHECK:
+	if ( c == '&' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
 
-    case LEX_MODE_OR_CHECK:
-      if ( c == '|' ) {
-	tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
-	lex_mode_ = LEX_MODE_START;
-      }
-      else {
-	lex_mode_ = LEX_MODE_ERROR;
-      }
-      break;
+      case LEX_MODE_OR_CHECK:
+	if ( c == '|' ) {
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
+	  lex_mode_ = LEX_MODE_START;
+	}
+	else {
+	  lex_mode_ = LEX_MODE_ERROR;
+	}
+	break;
 
-    case LEX_MODE_ERROR:
-      // Do nothing
-      //
-      break;
-    }
+      case LEX_MODE_ERROR:
+	// Do nothing
+	//
+	break;
+      }
     
-  } while ( reprocess );
+    } while ( reprocess );
 
+  }
 
+  
   if ( lex_mode_ == LEX_MODE_ERROR ) {
     std::cerr << "ERROR: lex error on character " << c << "\n";
     return false;
   }
 
-  
-  // Stage 2: Parser
+
+  // Stage 2: Grammar
   //
   if ( tokens_.size() > tokens_parsed_ ) {
 
     while ( tokens_parsed_ < tokens_.size() ) {
 
-      std::cout << "DEBUG: " << parse_mode_ << "\n";
+      bool reprocess = false;
 
-      size_t current_statement_index = statements_.size();
-	
+      if ( grammar_mode_.empty() ) {
+	grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+      }
+
       const token_type &last_token = tokens_[tokens_parsed_];
-      switch ( parse_mode_ ) {
-
-      case PARSE_MODE_START:
-	{
-	  bool entered_in_else_check = ( !if_parse_state_.empty() && if_parse_state_.back().mode == IF_PARSE_MODE_CHECK_ELSE );
-	  bool else_seen = false;
-	  
+      
+      do {
+	std::cout << "debug: grammar mode is " << grammar_mode_.back() << "\n";
+	switch ( grammar_mode_.back() ) {
+	case GRAMMAR_MODE_STATEMENT_START:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	    if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
-	      update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_CREATE_DOUBLE );
-	      parse_mode_ = PARSE_MODE_NAME_EXPECTED;
-	    }
-	    else if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
-	      if_parse_state_type new_if_parse_state;
-	      new_if_parse_state.curly_braces = curly_braces_;
-	      std::cout << "debug: if capturing curly braces " << curly_braces_ << "\n";
-	      if_parse_state_.push_back( new_if_parse_state );
-	      parse_mode_ = PARSE_MODE_LPARENS_EXPECTED;
-	    }
-	    else if ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) {
-	      std::cout << "DEBUG: else seen\n";
-	      else_seen = true;
-	      if ( if_parse_state_.empty() ) {
-		std::cout << "DEBUG: trailing else with no if?\n";
-		parse_mode_ = PARSE_MODE_ERROR;
-	      }
-	      else if ( if_parse_state_.back().mode != IF_PARSE_MODE_CHECK_ELSE ) {
-		std::cout << "DEBUG: wrong if parse mode\n";
-		parse_mode_ = PARSE_MODE_ERROR;
-	      }
-	      else {
-		// saving the index of the unconditional jump which terminates the last if-clause,
-		// then pushing it into the statements stack
-		//
-		size_t saved_index = statements_.size();
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
-
-		// fixing the jeqz associated with the previous if-check, to jump to here
-		//
-		size_t jump_start_idx = if_parse_state_.back().jump_offset;
-		statements_[ jump_start_idx ].jump_arg = statements_.size() - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
-		std::cout << "debug: (A) setting " << jump_start_idx << " jump arg to " << statements_[ jump_start_idx ].jump_arg << "\n";
-
-		// and saving the index of the jump that terminates the last if-clause
-		//
-		if_parse_state_.back().jump_offset = saved_index;
-
-		if_parse_state_.back().mode = IF_PARSE_MODE_CLAUSE;
-
-		parse_mode_ = PARSE_MODE_START;
-	      }
+	    if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
+	      grammar_mode_.back() = GRAMMAR_MODE_IF_STATEMENT;
 	    }
 	    else {
-	      statements_.emplace_back( eval_data_type( last_token.text ) );
-	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	    }
-	  }
-	  else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	    statements_.emplace_back( std::atof( last_token.text.c_str() ) );
-	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	  }
-	  else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-		    last_token.id == TOKEN_ID_TYPE_MINUS ||
-		    last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	      update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
-	    }
-	    else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	      update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
-	    }
-	    else {
-	      // Nothing needs to be done for unary +
-	    }
-	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	  }
-	  else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	    update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
-	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	  }
-	  else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
-	    std::cout << "debug: semicolon\n";
-	    if ( !if_parse_state_.empty() ) {
-	      std::cout << "debug: current curly braces is " << curly_braces_ << "\n";
-	      if ( if_parse_state_.back().curly_braces == curly_braces_ ) {
-		std::cout << "if/else curly brace match!\n";
-		if ( if_parse_state_.back().mode == IF_PARSE_MODE_CLAUSE ) {
-		  if_parse_state_.back().mode = IF_PARSE_MODE_CHECK_ELSE;
-		}
-		else {
-		  // TODO. is this possible?
-		}
-	      }
+	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT;
+	      reprocess           = true;
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
+	    // do we need to push state?
 	    ++curly_braces_;
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
-	    if ( curly_braces_ == 0U ) {
-	      parse_mode_ = PARSE_MODE_ERROR;
-	    }
-	    else {
+	    // do we need to pop state?
+	    if ( curly_braces_ ) {
 	      --curly_braces_;
-
-	      if ( !if_parse_state_.empty() ) {
-		if ( if_parse_state_.back().curly_braces == curly_braces_ ) {
-		  if ( if_parse_state_.back().mode == IF_PARSE_MODE_CLAUSE ) {
-		    if_parse_state_.back().mode = IF_PARSE_MODE_CHECK_ELSE;
-		  }
-		  else {
-		    // TODO. is this possible?
-		  }
-		}
-	      }
-
-	    }
-	  }
-	  else {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-
-	  if ( parse_mode_ != PARSE_MODE_ERROR ) {
-	    if ( entered_in_else_check && !else_seen ) {
-	      // fixing the jeqz associated with the previous if-check, to jump to here
-	      //
-	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
-	      statements_[ jump_start_idx ].jump_arg = statements_.size() - jump_start_idx - 1; // TODO. note this jump_arg doesn't exist YET. And why -1 ?
-	      std::cout << "debug: (B) setting " << jump_start_idx << " jump arg to " << statements_[ jump_start_idx ].jump_arg << "\n";
-
-	      if_parse_state_.pop_back();
-	    }
-	  }
-
-	}
-	break;
-      
-      case PARSE_MODE_OPERAND_EXPECTED:
-	if ( last_token.id == TOKEN_ID_TYPE_NUMBER
-	     || last_token.id == TOKEN_ID_TYPE_NAME ) {
-	  if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	    statements_.emplace_back( std::atof( last_token.text.c_str() ) );
-	  }
-	  else {
-	    // TODO. guard against keywords
-	    statements_.emplace_back( eval_data_type( last_token.text ) );
-	  }
-	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-		  last_token.id == TOKEN_ID_TYPE_MINUS ||
-		  last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
-	  }
-	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
-	  }
-	  else {
-	    // Nothing needs to be done for unary +
-	  }
-	  // stay in this parse mode
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
-	  // stay in this parse mode
-	}
-	// TODO. allow RPARENS here? Tricky...
-	//  need to allow for (), but not (-)
-	//  Perhaps only allow for this in a function context?
-	else {
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	break;
-      
-      case PARSE_MODE_OPERATOR_EXPECTED:
-	if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-	     last_token.id == TOKEN_ID_TYPE_MINUS ||
-	     last_token.id == TOKEN_ID_TYPE_DIVIDE ||
-	     last_token.id == TOKEN_ID_TYPE_MULTIPLY ||
-	     last_token.id == TOKEN_ID_TYPE_ASSIGN ||
-	     last_token.id == TOKEN_ID_TYPE_COMMA ||
-	     last_token.id == TOKEN_ID_TYPE_EQ ||
-	     last_token.id == TOKEN_ID_TYPE_GE ||
-	     last_token.id == TOKEN_ID_TYPE_GT ||
-	     last_token.id == TOKEN_ID_TYPE_LE ||
-	     last_token.id == TOKEN_ID_TYPE_LT ||
-	     last_token.id == TOKEN_ID_TYPE_NEQ ||
-	     last_token.id == TOKEN_ID_TYPE_AND ||
-	     last_token.id == TOKEN_ID_TYPE_OR ) {
-	  eval_id_type new_eval_id_type;
-	  if ( !token_id_to_eval_id_( last_token.id, &new_eval_id_type ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  else {
-	    update_stacks_with_operator_( statements_, operator_stack_, lparens_, new_eval_id_type );
-	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	  }
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	  if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_RPARENS ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
-	  if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_SEMICOLON ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  else {
-	    std::cout << "debug: semicolon\n";
-	    if ( !if_parse_state_.empty() ) {
-	      std::cout << "debug: current curly braces is " << curly_braces_ << "\n";
-	      if ( if_parse_state_.back().curly_braces == curly_braces_ ) {
-		std::cout << "if/else curly brace match!\n";
-		if ( if_parse_state_.back().mode == IF_PARSE_MODE_CLAUSE ) {
-		  if_parse_state_.back().mode = IF_PARSE_MODE_CHECK_ELSE;
-		}
-		else {
-		  // TODO. is this possible?
-		}
-	      }
-	    }
-	  }
-	  parse_mode_ = PARSE_MODE_START;
-	}
-	else {
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	break;
-
-
-      case PARSE_MODE_NAME_EXPECTED:
-	if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	  // TODO. guard against keywords
-	  statements_.emplace_back( eval_data_type( last_token.text ) );
-	  parse_mode_ = PARSE_MODE_VARIABLE_DEFINITION_START;
-	}
-	else {
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	break;
-
-
-      case PARSE_MODE_VARIABLE_DEFINITION_START:
-	if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
-	  if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_SEMICOLON ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  parse_mode_ = PARSE_MODE_START;
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-	  if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_ASSIGN ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	}
-	else {
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	break;
-
-
-      case PARSE_MODE_LPARENS_EXPECTED:
-	if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
-	  parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	}
-	else {
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	break;
-
-      }
-
-
-      // TODO. handle if parse mode stuff here?
-      // Instead of scattered inside the "general" parse mode
-      // stuff...
-      //
-#if 0
-      {
-	bool process_if_parse_mode = true;
-
-	while ( !if_parse_state_.empty() && process_if_parse_mode ) {
-
-	  process_if_parse_mode = false;
-	  
-	  switch ( if_parse_state_.back().mode ) {
-	  
-	  case IF_PARSE_MODE_IF:
-	    // If a closing parens was seen, go to CLAUSE mode,
-	    //  and put general parser back into START mode
-	    //
-	    if ( close_parens_found ) {
-	      // Push the jump that skips the (to follow) clause if the
-	      // if check fails
-	      statements.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
-
-	      // Keep a reference to this JEQZ, so later we can set the offset
-	      // appropriately
-	      //
-	      if_parse_state_.back().jump_offset = statements.size() - 1U;
-	    
-	      if_parse_state_.back().mode        = IF_PARSE_MODE_CLAUSE;
-
-	      // TODO. tricky... because we are in if parse mode,
-	      // need to drop back into start mode
-	      parse_mode_ = PARSE_MODE_START;
-	    }
-	    break;
-
-	  case IF_PARSE_MODE_IF_CLAUSE:
-	    // If a clause termination was seen,
-	    // go to else check
-	    // For clause termination, it's either a semi-colon
-	    // (if no curly brace was entered) or a matching
-	    // curly brace (if a starting curly brace was entered)
-	    //
-	    if ( clause_termination_found ) {
-	      if_parse_state_.back().mode = IF_PARSE_MODE_CHECK_ELSE;
-	    }
-	    break;
-
-	  case IF_PARSE_MODE_ELSE_CLAUSE:
-	    // If a clause termination was seen,
-	    // fix up jumps and go to end
-	    //
-	    if ( clause_termination_found ) {
-	      // Fix the jeqz associated with the previous if check, to jump to here
-	      //
-	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
-	      statements_[ jump_start_idx ].jump_arg = current_statement_index - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
-
-	      // TODO. this needs to possibly "unwind" multiple times...
-	      // This also means "clause_termination_found" needs to be re-evaluated??
-	      //
-	      if_parse_state_.pop_back();
-	      process_if_parse_mode = true;
-	    }
-	    break;
-
-	  case IF_PARSE_MODE_CHECK_ELSE:
-	    if ( else_seen ) {
-	      // Push an uncoditional jump at the end of the previous if clause,
-	      // and save a reference to it
-	      //
-	      size_t saved_index = statements_.size();
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
-
-	      // Fix the jeqz associated with the previous if check, to jump to here
-	      //
-	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
-	      statements_[ jump_start_idx ].jump_arg = statements_.size() - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
-
-	      // And now "remember" the unconditional jump, for the next fix
-	      //
-	      if_parse_state_.back().jump_offset = saved_index;
-
-	      if_parse_state_.back().mode = IF_PARSE_ELSE_CLAUSE;
-	      parse_mode_ = PARSE_MODE_START;
+	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_END;
+	      reprocess = true;
 	    }
 	    else {
-	      // Fix the jeqz associated with the previous if check, to jump to here
-	      //
-	      size_t jump_start_idx = if_parse_state_.back().jump_offset;
-	      statements_[ jump_start_idx ].jump_arg = current_statement_index - jump_start_idx; // TODO. note this jump_arg doesn't exist YET
-
-	      // TODO. this needs to possibly "unwind" multiple times...
-	      if_parse_state_.pop_back();
-	      process_if_parse_mode = true;
+	      grammar_mode_.back() = GRAMMAR_MODE_ERROR;
 	    }
-	    break;
-	  
 	  }
-	
-	}
-
-      }
-#endif
+	  else {
+	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT;
+	    reprocess            = true;
+	  }
+	  break;
       
+	case GRAMMAR_MODE_IF_STATEMENT:
+	  if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+	    grammar_mode_.back() = GRAMMAR_MODE_IF_CLAUSE;
+	    grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+	  }
+	  else {
+	    grammar_mode_.back() = GRAMMAR_MODE_ERROR;
+	  }
+	  break;
+
+	case GRAMMAR_MODE_STATEMENT:
+	  reprocess = false;
+	  if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    // TODO. a more "encapsulated" way of cleaning up staements/operator stack parsing...
+	    if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_SEMICOLON ) ) {
+	      std::cerr << "ERROR: parse error on character " << c << "\n";
+	      return false;
+	    }
+	    parse_mode_ = PARSE_MODE_START;
+	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_END;
+	    reprocess = true;
+	  }
+	  else {
+	    if ( !statement_parser( last_token ) ) {
+	      std::cerr << "ERROR: parse error on character " << c << "\n";
+	      return false;
+	    }
+
+	    // TODO. we need to determine if this is the end of an if ( expression )
+	    //  expression
+	  }
+	  break;
+
+	case GRAMMAR_MODE_STATEMENT_END:
+	  {
+	    reprocess = false;
+	    // TODO. If we are in the correct mode (if clause, else clause), mode
+	    // as appropriate
+	    bool mode_set = false;
+	    if ( (grammar_mode_.size() > 1) ) {
+	      if ( *(grammar_mode_.rbegin() - 1U) == GRAMMAR_MODE_IF_CLAUSE ) {
+		// TODO. and also need to check curly brace level!
+		grammar_mode_.pop_back();
+		grammar_mode_.back() = GRAMMAR_MODE_ELSE_CHECK;
+		mode_set = true;
+	      }
+	    }
+	    if ( !mode_set ) {
+	      // otherwise...
+	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_START;
+	    }
+	  }
+	  break;
+
+	case GRAMMAR_MODE_ELSE_CHECK:
+	  if ( last_token.id == TOKEN_ID_TYPE_NAME && ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) ) {
+	    grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+	  }
+	  else {
+	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_START;
+	    reprocess            = true;
+	  }
+	  break;
+	  
+	case GRAMMAR_MODE_ERROR:
+	  // Do nothing
+	  //
+	  break;
+	}
+      } while ( reprocess );
 
       ++tokens_parsed_;
+      
     }
+    
   }
 
-  
+
   // If we've parsed all tokens, clear everything
   //
   if ( tokens_.size() == tokens_parsed_ ) {
@@ -941,16 +830,21 @@ bool parser_type::parse_char( char c )
     tokens_parsed_ = 0U;
   }
 
-  
-  if ( parse_mode_ == PARSE_MODE_ERROR ) {
-    std::cerr << "ERROR: parse error on character " << c << "\n";
+
+  if ( !grammar_mode_.empty() && grammar_mode_.back() == GRAMMAR_MODE_ERROR ) {
+    std::cerr << "ERROR: grammar error on characater " << c << "\n";
     return false;
   }
 
-  
+
   // Catch errors when parser not in a valid final state
   //
   if ( c == '\0' ) {
+    if ( !grammar_mode_.empty() && grammar_mode_.back() != GRAMMAR_MODE_STATEMENT_START ) {
+      std::cerr << "ERROR: grammar not terminated correctly!\n";
+      return false;
+    }
+    
     if ( parse_mode_ != PARSE_MODE_START ) {
       std::cerr << "ERROR: parse not terminated correctly\n";
       return false;
