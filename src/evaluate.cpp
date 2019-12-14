@@ -88,8 +88,6 @@ bool evaluate(
 	  ; iter != expression.end()
 	  ; iter += iter_increment ) {
 
-    std::cout << "debug: exec " << iter->id << "\n";
-
     iter_increment = 1U;
     
     switch ( iter->id ) {
@@ -467,7 +465,6 @@ bool evaluate(
 
     case EVAL_ID_TYPE_OP_CLEAR:
       {
-	std::cout << "DEBUG: at CLEAR, eval stack size is " << evaluation_stack.size() << "\n";
 	if ( !evaluation_stack.empty() ) {
 	  double value;
 	  bool value_found = evaluation_stack.back().get_value( variables, &value );
@@ -545,7 +542,6 @@ bool evaluate(
 
 	if ( value == 0.0 ) {
 	  iter_increment = iter->jump_arg;
-	  std::cout << "DEBUG: jceqz " << iter_increment << "\n";
 	}
 	evaluation_stack.pop_back();
       }
@@ -553,11 +549,7 @@ bool evaluate(
 
     case EVAL_ID_TYPE_OP_JMP:
       {
-	std::cout << "debug: jump " << iter->jump_arg << "\n";
 	iter_increment = iter->jump_arg;
-	if ( iter_increment == 0 ) {
-	  return false;
-	}
       }
       break;
       

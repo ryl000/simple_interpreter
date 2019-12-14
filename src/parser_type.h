@@ -185,7 +185,6 @@ class parser_type {
   
   bool update_stacks_with_operator_(
  				    std::vector<eval_data_type>       &statements
-				   ,std::vector<size_t>               &lparens
 				   ,eval_id_type                       eval_id
 				   );
 
