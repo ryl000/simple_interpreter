@@ -32,4 +32,5 @@
 bool evaluate(
 	      const std::vector<eval_data_type> &expression
 	      ,std::map<std::string,double>      &variables
+	      ,std::vector<char>                 &data
 	      );

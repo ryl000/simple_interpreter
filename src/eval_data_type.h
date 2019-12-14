@@ -48,6 +48,9 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JCEQZ
   ,EVAL_ID_TYPE_OP_JMP
 
+  ,EVAL_ID_TYPE_OP_COPYFROMADDR
+  ,EVAL_ID_TYPE_OP_COPYTOADDR
+
   // NOTE: from this point down,
   //  it is assumed these enums match up
   //  with token_id_type
@@ -81,6 +84,7 @@ struct eval_data_type {
     :value( in_value )
     ,name()
     ,id( EVAL_ID_TYPE_PUSHD )
+    ,addr_arg( 0U )
     ,jump_arg( 0U )
     ,pop_arg( 0U )
   {}
@@ -89,6 +93,7 @@ struct eval_data_type {
     :value( 0.0 )
     ,name( in_name )
     ,id( EVAL_ID_TYPE_PUSHN )
+    ,addr_arg( 0U )
     ,jump_arg( 0U )
     ,pop_arg( 0U )
   {}
@@ -97,6 +102,7 @@ struct eval_data_type {
     :value( 0.0 )
     ,name()
     ,id( in_id )
+    ,addr_arg( 0U )
     ,jump_arg( 0U )
     ,pop_arg( 0U )
   {}
@@ -104,6 +110,7 @@ struct eval_data_type {
   double              value;
   std::string         name;
   eval_id_type        id;
+  size_t              addr_arg;
   size_t              jump_arg;
   size_t              pop_arg;
 };

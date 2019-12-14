@@ -21,6 +21,7 @@
  */
 
 #include <iostream>
+#include <map>
 
 #include "parser_type.h"
 
@@ -60,6 +61,9 @@ namespace {
     ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
 
+    ,{ 0,  "copyfromaddr" }
+    ,{ 0,  "copytoaddr" }
+
     ,{ 8, "add" }
     ,{ 8, "subtract" }
 
@@ -81,33 +85,14 @@ namespace {
   };
 
 
-  enum grammar_mode_type {
-    GRAMMAR_MODE_STATEMENT_START
-    ,GRAMMAR_MODE_STATEMENT_END
-    ,GRAMMAR_MODE_IF_CLAUSE
-    ,GRAMMAR_MODE_IF_EXPRESSION
-    ,GRAMMAR_MODE_IF_STATEMENT
-    ,GRAMMAR_MODE_ELSE_CHECK
-    ,GRAMMAR_MODE_ELSE_CLAUSE
-    ,GRAMMAR_MODE_STATEMENT
-    ,GRAMMAR_MODE_ERROR
+  struct variable_data_type {
+    size_t index;
+    // TODO. type
   };
 
-
-  struct grammar_state_type {
-    size_t            block_depth;
-    grammar_mode_type mode;
-    size_t            jump_offset;
-
-    grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
-      :block_depth( in_block_depth )
-      ,mode( in_mode )
-      ,jump_offset( 0U ) 
-    {}
-  };
-
-  std::vector<grammar_state_type> grammar_state_;
-  
+  std::map<std::string,variable_data_type> variables_;
+  size_t                                   new_variable_index_ = 0U;
+  size_t                                   current_new_var_idx = 0U;
 }
 
 
@@ -241,6 +226,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
   case PARSE_MODE_NAME_EXPECTED:
     if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
       // TODO. guard against keywords
+      // TODO. guard against redefinitions (at the same block-depth)
       statements_.emplace_back( eval_data_type( last_token.text ) );
       parse_mode_ = PARSE_MODE_VARIABLE_DEFINITION_START;
     }
@@ -715,13 +701,10 @@ bool parser_type::parse_char( char c )
   //
   if ( tokens_.size() > tokens_parsed_ ) {
 
+    
     while ( tokens_parsed_ < tokens_.size() ) {
 
       bool reprocess = false;
-
-      if ( grammar_state_.empty() ) {
-	grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
-      }
 
       const token_type &last_token = tokens_[tokens_parsed_];
       
@@ -731,6 +714,9 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	    if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_IF_STATEMENT;
+	    }
+	    else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
 	    }
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
@@ -757,7 +743,64 @@ bool parser_type::parse_char( char c )
 	    reprocess                  = true;
 	  }
 	  break;
-      
+
+	case GRAMMAR_MODE_DEFINE_VARIABLE:
+	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	    // TODO. check against keywords
+	    std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
+	    if ( iter != variables_.end() ) {
+	      std::cout << "ERROR: variable already defined\n";
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	    else {
+	      current_new_var_idx = new_variable_index_;
+	      std::cout << "debug: current_new_var_idx set to " << current_new_var_idx << "\n";
+	      new_variable_index_ += 8U; // size of double
+
+	      variable_data_type new_variable;
+	      new_variable.index  = current_new_var_idx;
+	      variables_.insert( std::make_pair( last_token.text, new_variable ) );
+	      std::cout << "created " << last_token.text << " at " << new_variable.index << "\n";
+	      grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
+	    }
+	  }
+	  else {
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	  }
+	  break;
+
+	case GRAMMAR_MODE_CHECK_FOR_ASSIGN:
+	  if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT;
+	  }
+	  else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
+	    reprocess = true;
+	  }
+	  else {
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	  }
+	  break;
+
+	case GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT:
+	  if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    if ( !statement_parser_finalize_() ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	    else {
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
+	      statements_.back().addr_arg = current_new_var_idx;
+	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
+	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
+	    }
+	  }
+	  else {
+	    if ( !statement_parser_( last_token ) ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	  }
+	  break;
+	  
 	case GRAMMAR_MODE_IF_STATEMENT:
 	  if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
 	    grammar_state_.back().mode = GRAMMAR_MODE_IF_EXPRESSION;
@@ -801,6 +844,9 @@ bool parser_type::parse_char( char c )
 	    // for semi-colon, we need to add an explicit command to clear the
 	    //  evaluation stack. Might want to add size checking...
 	    //  evaluation stack should either be down to 1 or 0 elements...
+	    //
+	    // TODO. only do this if we actually pushed elements into statements_
+	    //  stack (versus previous "end")
 	    //
 	    statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	    
@@ -904,7 +950,7 @@ bool parser_type::parse_char( char c )
 
 
   if ( !grammar_state_.empty() && grammar_state_.back().mode == GRAMMAR_MODE_ERROR ) {
-    std::cerr << "ERROR: grammar error on characater " << c << "\n";
+    std::cerr << "ERROR: grammar error on characater " << c << " (" << line_no_ << "," << char_no_ << ")\n";
     return false;
   }
 
@@ -960,6 +1006,16 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->jump_arg <<
+	"\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+      std::cout << operator_data[ iter->id ].text <<
+	" " << iter->addr_arg <<
+	"\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDR ) {
+      std::cout << operator_data[ iter->id ].text <<
+	" " << iter->addr_arg <<
 	"\n";
     }
     else {

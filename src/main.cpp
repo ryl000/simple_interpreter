@@ -96,10 +96,14 @@ int main( int argc, char* argv[] )
     std::map<std::string,double> variables;
 
     print_statements( parser.statements() );
-      
-    if ( !evaluate( parser.statements(), variables ) ) {
+
+    std::vector<char> data( 1000 ); // TODO. size this correctly
+    if ( !evaluate( parser.statements(), variables, data ) ) {
       std::cerr << "ERROR: evaluation error\n";
     }
+
+    std::cout << "x is " << *(reinterpret_cast<double*>( &(data[0]) ) ) << "\n";
+    std::cout << "y is " << *(reinterpret_cast<double*>( &(data[8]) ) ) << "\n";
   }
 
 

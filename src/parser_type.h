@@ -37,14 +37,16 @@ class parser_type {
     ,lparens_()
     ,operator_stack_()
     ,tokens_()
-    ,if_parse_state_()
+    ,grammar_state_()
     ,char_no_(0U)
     ,curly_braces_(0U)
     ,line_no_(0U)
     ,tokens_parsed_(0U)
     ,lex_mode_( LEX_MODE_START )
     ,parse_mode_( PARSE_MODE_START )
-  {}
+  {
+    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+  }
 
   bool parse_char( char c );
 
@@ -52,6 +54,23 @@ class parser_type {
 
   
  private:
+
+  enum grammar_mode_type {
+    GRAMMAR_MODE_STATEMENT_START
+    ,GRAMMAR_MODE_STATEMENT_END
+    ,GRAMMAR_MODE_DEFINE_VARIABLE
+    ,GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT
+    ,GRAMMAR_MODE_CHECK_FOR_ASSIGN
+    ,GRAMMAR_MODE_IF_CLAUSE
+    ,GRAMMAR_MODE_IF_EXPRESSION
+    ,GRAMMAR_MODE_IF_STATEMENT
+    ,GRAMMAR_MODE_ELSE_CHECK
+    ,GRAMMAR_MODE_ELSE_CLAUSE
+    ,GRAMMAR_MODE_STATEMENT
+    ,GRAMMAR_MODE_ERROR
+  };
+
+
   enum lex_mode_type {
     LEX_MODE_ERROR
   
@@ -126,7 +145,19 @@ class parser_type {
 
   };
 
-  
+
+  struct grammar_state_type {
+    size_t            block_depth;
+    grammar_mode_type mode;
+    size_t            jump_offset;
+
+    grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
+      :block_depth( in_block_depth )
+      ,mode( in_mode )
+      ,jump_offset( 0U ) 
+    {}
+  };
+
 
   struct token_type {
     explicit token_type( token_id_type in_id )
@@ -155,25 +186,6 @@ class parser_type {
   };
 
 
-  enum if_parse_mode_type {
-    IF_PARSE_MODE_IF
-    ,IF_PARSE_MODE_CLAUSE
-    ,IF_PARSE_MODE_CHECK_ELSE
-  };
-
-
-  struct if_parse_state_type {
-    if_parse_state_type()
-      :mode( IF_PARSE_MODE_IF )
-      ,curly_braces( 0U )
-      ,jump_offset( 0U )
-    {}
-
-    if_parse_mode_type mode;
-    size_t             curly_braces;
-    size_t             jump_offset;
-  };
-
   bool anchor_jump_here_( size_t idx );
 
   bool statement_parser_( const token_type &last_token );
@@ -195,7 +207,7 @@ class parser_type {
   std::vector<size_t>                       lparens_; // TODO. convert this to a deque?
   std::vector<eval_data_type>               operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                   tokens_;
-  std::vector<if_parse_state_type>          if_parse_state_;
+  std::vector<grammar_state_type>           grammar_state_;
 
   size_t                                    char_no_;
   size_t                                    curly_braces_;

@@ -77,6 +77,7 @@ namespace {
 bool evaluate(
 	      const std::vector<eval_data_type> &expression
 	      ,std::map<std::string,double>      &variables
+	      ,std::vector<char>                 &data
 	      )
 {
   std::vector<operand_type> evaluation_stack;
@@ -552,7 +553,26 @@ bool evaluate(
 	iter_increment = iter->jump_arg;
       }
       break;
-      
+
+    case EVAL_ID_TYPE_OP_COPYFROMADDR:
+      break;
+
+    case EVAL_ID_TYPE_OP_COPYTOADDR:
+      {
+	if ( evaluation_stack.empty() ) {
+	  return false;
+	}
+
+	double value;
+	bool value_found = evaluation_stack.back().get_value( variables, &value );
+	if ( !value_found ) {
+	  return false;
+	}
+
+	char *src = reinterpret_cast<char*>( &value );
+	std::copy( src, src+8U, &(data[iter->addr_arg]) );
+      }
+      break;
     }
       
   }
