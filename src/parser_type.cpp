@@ -57,6 +57,7 @@ namespace {
     ,{ 0,  "pop" }
     ,{ 0,  "jnez" }
     ,{ 0,  "jeqz" }
+    ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
 
     ,{ 8, "add" }
@@ -84,28 +85,41 @@ namespace {
     GRAMMAR_MODE_STATEMENT_START
     ,GRAMMAR_MODE_STATEMENT_END
     ,GRAMMAR_MODE_IF_CLAUSE
+    ,GRAMMAR_MODE_IF_EXPRESSION
     ,GRAMMAR_MODE_IF_STATEMENT
     ,GRAMMAR_MODE_ELSE_CHECK
+    ,GRAMMAR_MODE_ELSE_CLAUSE
     ,GRAMMAR_MODE_STATEMENT
     ,GRAMMAR_MODE_ERROR
   };
 
-  std::vector<grammar_mode_type> grammar_mode_;
+
+  struct grammar_state_type {
+    size_t            block_depth;
+    grammar_mode_type mode;
+    size_t            jump_offset;
+
+    grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
+      :block_depth( in_block_depth )
+      ,mode( in_mode )
+      ,jump_offset( 0U ) 
+    {}
+  };
+
+  std::vector<grammar_state_type> grammar_state_;
   
 }
 
 
 bool parser_type::statement_parser( const token_type &last_token )
 {
-  size_t current_statement_index = statements_.size();
-
   switch ( parse_mode_ ) {
 
   case PARSE_MODE_START:
     {
       if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
-	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_CREATE_DOUBLE );
+	  update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_CREATE_DOUBLE );
 	  parse_mode_ = PARSE_MODE_NAME_EXPECTED;
 	}
 	else {
@@ -121,10 +135,10 @@ bool parser_type::statement_parser( const token_type &last_token )
 		last_token.id == TOKEN_ID_TYPE_MINUS ||
 		last_token.id == TOKEN_ID_TYPE_NOT ) {
 	if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
+	  update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
+	  update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_NOT );
 	}
 	else {
 	  // Nothing needs to be done for unary +
@@ -132,7 +146,7 @@ bool parser_type::statement_parser( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
       else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
+	update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
       else {
@@ -157,10 +171,10 @@ bool parser_type::statement_parser( const token_type &last_token )
 	      last_token.id == TOKEN_ID_TYPE_MINUS ||
 	      last_token.id == TOKEN_ID_TYPE_NOT ) {
       if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
+	update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_NEGATE );
       }
       else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_NOT );
+	update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_NOT );
       }
       else {
 	// Nothing needs to be done for unary +
@@ -168,7 +182,7 @@ bool parser_type::statement_parser( const token_type &last_token )
       // stay in this parse mode
     }
     else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-      update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
+      update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_LPARENS );
       // stay in this parse mode
     }
     // TODO. allow RPARENS here? Tricky...
@@ -199,12 +213,12 @@ bool parser_type::statement_parser( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_ERROR;
       }
       else {
-	update_stacks_with_operator_( statements_, operator_stack_, lparens_, new_eval_id_type );
+	update_stacks_with_operator_( statements_, lparens_, new_eval_id_type );
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
     }
     else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-      if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_RPARENS ) ) {
+      if ( !update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_RPARENS ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
     }
@@ -228,7 +242,7 @@ bool parser_type::statement_parser( const token_type &last_token )
 
   case PARSE_MODE_VARIABLE_DEFINITION_START:
     if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-      if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_ASSIGN ) ) {
+      if ( !update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_ASSIGN ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
       parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
@@ -267,7 +281,6 @@ bool parser_type::token_id_to_eval_id_(
 
 bool parser_type::update_stacks_with_operator_(
 					       std::vector<eval_data_type>       &statements
-					       ,std::vector<eval_data_type>       &operator_stack
 					       ,std::vector<size_t>               &lparens
 					       ,eval_id_type                       eval_id
 					       )
@@ -276,8 +289,8 @@ bool parser_type::update_stacks_with_operator_(
 
   if ( eval_id == EVAL_ID_TYPE_OP_LPARENS ) {
       
-    //std::cout << "DEBUG: pushing " << operator_stack.size() << " onto lparens stack\n";
-    lparens.push_back( operator_stack.size() );
+    //std::cout << "DEBUG: pushing " << operator_stack_.size() << " onto lparens stack\n";
+    lparens.push_back( operator_stack_.size() );
       
   }
   else {
@@ -288,8 +301,8 @@ bool parser_type::update_stacks_with_operator_(
       return false;
     }
 
-    // For a semi-colon, make sure no un-matched left parens exist
-    else if ( (eval_id == EVAL_ID_TYPE_OP_SEMICOLON) && !lparens.empty() ) {
+    // For finalize, make sure no un-matched left parens exist
+    else if ( (eval_id == EVAL_ID_TYPE_OP_FINALIZE) && !lparens.empty() ) {
       return false;
     }
 
@@ -297,14 +310,14 @@ bool parser_type::update_stacks_with_operator_(
     //  statements stack
     //
 	
-    while ( !operator_stack.empty() ) {
+    while ( !operator_stack_.empty() ) {
 
       // For a closing parens, pop elements off operator stack until the
       //  matching opening parens is found
       //
       if ( eval_id == EVAL_ID_TYPE_OP_RPARENS ) {
 
-	if ( operator_stack.size() == lparens.back() ) {
+	if ( operator_stack_.size() == lparens.back() ) {
 	  break;
 	}
 
@@ -314,26 +327,26 @@ bool parser_type::update_stacks_with_operator_(
 	// Otherwise, pop elements off operator stack until either the
 	// current parenthesis level has been exhausted...
 	//
-	if ( !lparens.empty() && (operator_stack.size() <= lparens.back()) ) {
+	if ( !lparens.empty() && (operator_stack_.size() <= lparens.back()) ) {
 	  break;
 	}
 
 	// ...Or the topmost operator in the operator stack has a < precedence
 	//
-	if ( operator_data[ eval_id ].precedence >= operator_data[ operator_stack.back().id ].precedence ) {
+	if ( operator_data[ eval_id ].precedence >= operator_data[ operator_stack_.back().id ].precedence ) {
 	  break;
 	}
       }
 	
-      //std::cout << "DEBUG: putting " << operator_data[ operator_stack.back().id ].text << " into statement stack\n";
-      statements.emplace_back( operator_stack.back() );
+      //std::cout << "DEBUG: putting " << operator_data[ operator_stack_.back().id ].text << " into statement stack\n";
+      statements.emplace_back( operator_stack_.back() );
 
       // If && or || is pushed into the statements stack, we need to resolve any previously-pushed
       // JNEZ/JEQZ with the correct jump arg
       //
-      if ( operator_stack.back().id == EVAL_ID_TYPE_OP_AND
-	   || operator_stack.back().id == EVAL_ID_TYPE_OP_OR ) {
-	size_t jump_idx = operator_stack.back().jump_arg;
+      if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_AND
+	   || operator_stack_.back().id == EVAL_ID_TYPE_OP_OR ) {
+	size_t jump_idx = operator_stack_.back().jump_arg;
 	// TODO. guard against invalid index?
 	// TODO. guard against invalid offset calc?
 	statements[ jump_idx ].jump_arg = statements.size() - jump_idx;
@@ -341,7 +354,7 @@ bool parser_type::update_stacks_with_operator_(
 	statements.back().jump_arg = 0U;
       }
 
-      operator_stack.pop_back();
+      operator_stack_.pop_back();
 
     }
 
@@ -353,13 +366,13 @@ bool parser_type::update_stacks_with_operator_(
       lparens.pop_back();
     }
 
-    // Otherwise, if this is not a comma or semi-colon, add it to the
+    // Otherwise, if this is not a comma or "finalize", add it to the
     //  operator stack
     //
-    else if ( eval_id != EVAL_ID_TYPE_OP_COMMA && eval_id != EVAL_ID_TYPE_OP_SEMICOLON ) {
+    else if ( eval_id != EVAL_ID_TYPE_OP_COMMA && eval_id != EVAL_ID_TYPE_OP_FINALIZE ) {
 	
       //std::cout << "DEBUG: putting " << operator_data[ item_data.id ].text << " into operator stack\n";
-      operator_stack.emplace_back( eval_data_type( eval_id ) );
+      operator_stack_.emplace_back( eval_data_type( eval_id ) );
 
       // If && or ||, we need to add a JEQZ/JNEZ into the statements, to handle short-circuits
       // NOTE that we are using the "jump arg" field in the && or || to
@@ -368,21 +381,13 @@ bool parser_type::update_stacks_with_operator_(
       //
       if ( eval_id == EVAL_ID_TYPE_OP_AND ) {
 	statements.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
-	operator_stack.back().jump_arg = statements.size() - 1U;
+	operator_stack_.back().jump_arg = statements.size() - 1U;
       }
       else if ( eval_id == EVAL_ID_TYPE_OP_OR ) {
 	statements.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JNEZ ) );
-	operator_stack.back().jump_arg = statements.size() - 1U;
+	operator_stack_.back().jump_arg = statements.size() - 1U;
       }
 	
-    }
-
-    // for semi-colon, we need to add an explicit command to clear the
-    //  evaluation stack. Might want to add size checking...
-    //  evaluation stack should either be down to 1 or 0 elements...
-    //
-    if ( eval_id == EVAL_ID_TYPE_OP_SEMICOLON && !statements.empty() ) {
-      statements.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
     }
 
   }
@@ -394,8 +399,6 @@ bool parser_type::update_stacks_with_operator_(
 bool parser_type::parse_char( char c )
 {
   ++char_no_;
-
-  std::cout << "debug: parsing " << c << "\n";
 
   // Stage 1: Tokenize
   //
@@ -705,23 +708,22 @@ bool parser_type::parse_char( char c )
 
       bool reprocess = false;
 
-      if ( grammar_mode_.empty() ) {
-	grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+      if ( grammar_state_.empty() ) {
+	grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
       }
 
       const token_type &last_token = tokens_[tokens_parsed_];
       
       do {
-	std::cout << "debug: grammar mode is " << grammar_mode_.back() << "\n";
-	switch ( grammar_mode_.back() ) {
+	switch ( grammar_state_.back().mode ) {
 	case GRAMMAR_MODE_STATEMENT_START:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	    if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
-	      grammar_mode_.back() = GRAMMAR_MODE_IF_STATEMENT;
+	      grammar_state_.back().mode = GRAMMAR_MODE_IF_STATEMENT;
 	    }
 	    else {
-	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT;
-	      reprocess           = true;
+	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
+	      reprocess                  = true;
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
@@ -732,80 +734,139 @@ bool parser_type::parse_char( char c )
 	    // do we need to pop state?
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
-	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_END;
-	      reprocess = true;
+	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
+	      reprocess                  = true;
 	    }
 	    else {
-	      grammar_mode_.back() = GRAMMAR_MODE_ERROR;
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	    }
 	  }
 	  else {
-	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT;
-	    reprocess            = true;
+	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
+	    reprocess                  = true;
 	  }
 	  break;
       
 	case GRAMMAR_MODE_IF_STATEMENT:
 	  if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	    grammar_mode_.back() = GRAMMAR_MODE_IF_CLAUSE;
-	    grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+	    grammar_state_.back().mode = GRAMMAR_MODE_IF_EXPRESSION;
 	  }
 	  else {
-	    grammar_mode_.back() = GRAMMAR_MODE_ERROR;
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	  }
 	  break;
 
-	case GRAMMAR_MODE_STATEMENT:
-	  reprocess = false;
-	  if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	case GRAMMAR_MODE_IF_EXPRESSION:
+	  if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
 	    // TODO. a more "encapsulated" way of cleaning up staements/operator stack parsing...
-	    if ( !update_stacks_with_operator_( statements_, operator_stack_, lparens_, EVAL_ID_TYPE_OP_SEMICOLON ) ) {
+	    if ( !update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_FINALIZE ) ) {
 	      std::cerr << "ERROR: parse error on character " << c << "\n";
 	      return false;
 	    }
 	    parse_mode_ = PARSE_MODE_START;
-	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_END;
-	    reprocess = true;
+	    // TODO. Is there an easy way to unify JCEQZ and JEQZ while maintaining
+	    // our stack-based evaluation?
+	    //
+	    grammar_state_.back().jump_offset = statements_.size();
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JCEQZ ) );
+	    grammar_state_.back().mode = GRAMMAR_MODE_IF_CLAUSE;
+	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
 	    if ( !statement_parser( last_token ) ) {
 	      std::cerr << "ERROR: parse error on character " << c << "\n";
 	      return false;
 	    }
-
-	    // TODO. we need to determine if this is the end of an if ( expression )
-	    //  expression
 	  }
+	  break;
+	  
+	case GRAMMAR_MODE_STATEMENT:
+	  reprocess = false;
+	  if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    // TODO. a more "encapsulated" way of cleaning up staements/operator stack parsing...
+	    if ( !update_stacks_with_operator_( statements_, lparens_, EVAL_ID_TYPE_OP_FINALIZE ) ) {
+	      std::cerr << "ERROR: parse error on character " << c << "\n";
+	      return false;
+	    }
+	    parse_mode_ = PARSE_MODE_START;
+	    // for semi-colon, we need to add an explicit command to clear the
+	    //  evaluation stack. Might want to add size checking...
+	    //  evaluation stack should either be down to 1 or 0 elements...
+	    //
+	    statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
+	    
+	    parse_mode_ = PARSE_MODE_START;
+	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
+	    reprocess = true;
+	  }
+	  else if ( !statement_parser( last_token ) ) {
+	    std::cerr << "ERROR: parse error on character " << c << "\n";
+	    return false;
+	  }
+	  
 	  break;
 
 	case GRAMMAR_MODE_STATEMENT_END:
 	  {
 	    reprocess = false;
-	    // TODO. If we are in the correct mode (if clause, else clause), mode
-	    // as appropriate
 	    bool mode_set = false;
-	    if ( (grammar_mode_.size() > 1) ) {
-	      if ( *(grammar_mode_.rbegin() - 1U) == GRAMMAR_MODE_IF_CLAUSE ) {
-		// TODO. and also need to check curly brace level!
-		grammar_mode_.pop_back();
-		grammar_mode_.back() = GRAMMAR_MODE_ELSE_CHECK;
+	    if ( (grammar_state_.size() > 1) ) {
+	      if ( ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
+		   &&
+		   ((grammar_state_.rbegin() + 1U)->block_depth == curly_braces_) ) {
+		grammar_state_.pop_back();
+		grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
+		mode_set = true;
+
+		// NOTE: Need to defer jump offset fix until after we know if there
+		// is an "else" following or not...
+	      }
+	      else if ( ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_ELSE_CLAUSE)
+		   &&
+		   ((grammar_state_.rbegin() + 1U)->block_depth == curly_braces_) ) {
+		grammar_state_.pop_back();
+		grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
+		
+		// TODO. unify jump offset fix?
+		size_t jump_idx = grammar_state_.back().jump_offset;
+		statements_[ jump_idx ].jump_arg = statements_.size() - jump_idx;
+		
 		mode_set = true;
 	      }
 	    }
 	    if ( !mode_set ) {
 	      // otherwise...
-	      grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_START;
+	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }
 	  }
 	  break;
 
 	case GRAMMAR_MODE_ELSE_CHECK:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME && ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) ) {
-	    grammar_mode_.push_back( GRAMMAR_MODE_STATEMENT_START );
+	    // Put an unconditional jmp at the end of the previous if clause
+	    size_t new_jmp_idx = statements_.size();
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+
+	    // Fix-up the jump from the if expression
+	    {
+	      // TODO. unify jump offset fix?
+	      size_t jump_idx = grammar_state_.back().jump_offset;
+	      statements_[ jump_idx ].jump_arg = statements_.size() - jump_idx;
+	    }
+
+	    // Save this new jmp to fix later
+	    grammar_state_.back().jump_offset = new_jmp_idx;
+	    
+	    grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CLAUSE;
+	    grammar_state_.push_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
-	    grammar_mode_.back() = GRAMMAR_MODE_STATEMENT_START;
-	    reprocess            = true;
+	    // TODO. unify jump offset fix?
+	    size_t jump_idx = grammar_state_.back().jump_offset;
+	    statements_[ jump_idx ].jump_arg = statements_.size() - jump_idx;
+	    
+	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
+	    reprocess                  = true;
 	  }
 	  break;
 	  
@@ -831,7 +892,7 @@ bool parser_type::parse_char( char c )
   }
 
 
-  if ( !grammar_mode_.empty() && grammar_mode_.back() == GRAMMAR_MODE_ERROR ) {
+  if ( !grammar_state_.empty() && grammar_state_.back().mode == GRAMMAR_MODE_ERROR ) {
     std::cerr << "ERROR: grammar error on characater " << c << "\n";
     return false;
   }
@@ -840,9 +901,17 @@ bool parser_type::parse_char( char c )
   // Catch errors when parser not in a valid final state
   //
   if ( c == '\0' ) {
-    if ( !grammar_mode_.empty() && grammar_mode_.back() != GRAMMAR_MODE_STATEMENT_START ) {
-      std::cerr << "ERROR: grammar not terminated correctly!\n";
-      return false;
+    if ( !grammar_state_.empty() ) {
+      if ( grammar_state_.back().mode == GRAMMAR_MODE_ELSE_CHECK ) {
+	// TODO. unify jump offset fix?
+	size_t jump_idx = grammar_state_.back().jump_offset;
+	statements_[ jump_idx ].jump_arg = statements_.size() - jump_idx;
+      }
+      else if ( grammar_state_.back().mode != GRAMMAR_MODE_STATEMENT_START ) {
+	std::cerr << "ERROR: grammar not terminated correctly!\n";
+	std::cerr << "grammar mode is " << grammar_state_.back().mode << "\n";
+	return false;
+      }
     }
     
     if ( parse_mode_ != PARSE_MODE_START ) {
