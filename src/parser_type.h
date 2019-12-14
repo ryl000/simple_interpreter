@@ -174,8 +174,11 @@ class parser_type {
     size_t             jump_offset;
   };
 
+  bool anchor_jump_here_( size_t idx );
 
-  bool statement_parser( const token_type &last_token );
+  bool statement_parser_( const token_type &last_token );
+
+  bool statement_parser_finalize_();
   
   bool token_id_to_eval_id_(
 			    token_id_type token_id
@@ -184,8 +187,7 @@ class parser_type {
 
   
   bool update_stacks_with_operator_(
- 				    std::vector<eval_data_type>       &statements
-				   ,eval_id_type                       eval_id
+				    eval_id_type                       eval_id
 				   );
 
   std::string                               current_token_;
