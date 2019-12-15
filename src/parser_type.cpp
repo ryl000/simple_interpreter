@@ -82,6 +82,22 @@ namespace {
    
   };
 
+
+  bool is_keyword( const std::string &name )
+  {
+    if ( std::strcmp( "if", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "double", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "else", name.c_str() ) == 0 ) {
+      return true;
+    }
+
+    return false;
+  }
+  
 }
 
 
@@ -102,9 +118,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
   case PARSE_MODE_START:
     {
       if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	// TODO. scoping
 	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
 	if ( iter == variables_.end() ) {
-	  std::cout << "ERROR: variable cannot be found\n";
+	  std::cout << "ERROR(A): variable " << last_token.text << " cannot be found\n";
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
@@ -149,9 +166,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
       }
       else {
+	// TODO. scoping
 	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
 	if ( iter == variables_.end() ) {
-	  std::cout << "ERROR: variable cannot be found\n";
+	  std::cout << "ERROR(B): variable cannot be found\n";
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
@@ -261,12 +279,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
   }
 
-  if ( parse_mode_ == PARSE_MODE_ERROR ) {
-    return false;
-  }
-  else {
-    return true;
-  }
+  return ( parse_mode_ != PARSE_MODE_ERROR );
 }
 
 
@@ -725,21 +738,25 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	    if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_IF_STATEMENT;
+	      grammar_state_.back().branching_mode = BRANCHING_MODE_IF;
 	    }
 	    else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
 	    }
+	    // TODO. add while
+	    // TODO. add int?
+	    // TODO. add function?
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
 	      reprocess                  = true;
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
-	    // do we need to push state?
+	    // TODO. variable scoping
 	    ++curly_braces_;
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
-	    // do we need to pop state?
+	    // TODO. variable scoping
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
@@ -757,25 +774,31 @@ bool parser_type::parse_char( char c )
 
 	case GRAMMAR_MODE_DEFINE_VARIABLE:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	    // TODO. check against keywords
+	    if ( is_keyword( last_token.text ) ) {
+	      std::cout << "ERROR: keyword found\n";
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	      break;
+	    }
+	    
+	    // TODO. scoping
 	    std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
 	    if ( iter != variables_.end() ) {
 	      std::cout << "ERROR: variable already defined\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	      break;
 	    }
-	    else {
-	      // TODO. always add doubles on 8-byte boundary,
-	      // always add int32's on 4-byte boundary
-	      //
-	      current_new_var_idx_ = new_variable_index_;
-	      new_variable_index_ += 8U; // size of double
 
-	      variable_data_type new_variable;
-	      new_variable.index  = current_new_var_idx_;
-	      variables_.insert( std::make_pair( last_token.text, new_variable ) );
-	      std::cout << "created " << last_token.text << " at " << new_variable.index << "\n";
-	      grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
-	    }
+	    // TODO. always add doubles on 8-byte boundary,
+	    // always add int32's on 4-byte boundary
+	    //
+	    current_new_var_idx_ = new_variable_index_;
+	    new_variable_index_ += 8U; // size of double
+
+	    variable_data_type new_variable;
+	    new_variable.index  = current_new_var_idx_;
+	    // TODO. more efficient insert, using find_lower_bound
+	    variables_.insert( std::make_pair( last_token.text, new_variable ) );
+	    grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
 	  }
 	  else {
 	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
@@ -827,7 +850,8 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
 	    if ( !statement_parser_finalize_() ) {
 	      std::cerr << "ERROR(1): parse error on character " << c << "\n";
-	      return false;
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	      break;
 	    }
 
 	    // TODO. Is there an easy way to unify JCEQZ and JEQZ while maintaining
@@ -838,11 +862,9 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.back().mode = GRAMMAR_MODE_IF_CLAUSE;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
-	  else {
-	    if ( !statement_parser_( last_token ) ) {
-	      std::cerr << "ERROR(2): parse error on character " << c << "\n";
-	      return false;
-	    }
+	  else if ( !statement_parser_( last_token ) ) {
+	    std::cerr << "ERROR(2): parse error on character " << c << "\n";
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	  }
 	  break;
 	  
@@ -878,39 +900,32 @@ bool parser_type::parse_char( char c )
 	    reprocess = false;
 	    bool mode_set = false;
 	    if ( (grammar_state_.size() > 1) ) {
-	      if ( ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
-		   &&
-		   ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
+
+	      // "unwind" if/else as applicable
+	      //
+	      while ( grammar_state_.size() > 1
+		      &&
+		      ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
+		      &&
+		      ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
 		grammar_state_.pop_back();
-		grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
-		mode_set = true;
 
-		// NOTE: Need to defer jump offset fix until after we know if there
-		// is an "else" following or not...
-	      }
-	      else {
-
-		// "unwind" if/else as applicable
-		//
-		while ( grammar_state_.size() > 1
-			&&
-			((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_ELSE_CLAUSE)
-			&&
-			((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
-		  grammar_state_.pop_back();
-
+		if ( (grammar_state_.rbegin())->branching_mode != BRANCHING_MODE_IF ) {
 		  // TODO. check return value?
 		  anchor_jump_here_( grammar_state_.back().jump_offset );
 		}
-
+		else {
+		  grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
+		  mode_set = true;
+		  break;
+		}
+		
 	      }
-
+	      
 	    }
 	    
 	    if ( !mode_set ) {
-
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
-	      
 	    }
 	  }
 	  break;
@@ -928,13 +943,28 @@ bool parser_type::parse_char( char c )
 	    // Save this new jmp to fix later
 	    grammar_state_.back().jump_offset = new_jmp_idx;
 	    
-	    grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CLAUSE;
+	    grammar_state_.back().mode = GRAMMAR_MODE_IF_CLAUSE;
+	    grammar_state_.back().branching_mode = BRANCHING_MODE_ELSE;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
-	    // TODO. check return value?
+	    bool mode_set = false;
+
 	    anchor_jump_here_( grammar_state_.back().jump_offset );
 	    
+	    // "unwind" if/else as applicable
+	    //
+	    while ( grammar_state_.size() > 1
+		    &&
+		    ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
+		    &&
+		    ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
+	      grammar_state_.pop_back();
+
+	      // TODO. check return value?
+	      anchor_jump_here_( grammar_state_.back().jump_offset );
+	    }
+
 	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    reprocess                  = true;
 	  }
