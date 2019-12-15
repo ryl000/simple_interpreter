@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstring>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -38,9 +39,12 @@ class parser_type {
     ,operator_stack_()
     ,tokens_()
     ,grammar_state_()
+    ,variables_()
     ,char_no_(0U)
     ,curly_braces_(0U)
+    ,current_new_var_idx_(0U)
     ,line_no_(0U)
+    ,new_variable_index_(0U)
     ,tokens_parsed_(0U)
     ,lex_mode_( LEX_MODE_START )
     ,parse_mode_( PARSE_MODE_START )
@@ -49,6 +53,8 @@ class parser_type {
   }
 
   bool parse_char( char c );
+
+  size_t data_size() { return new_variable_index_; }
 
   const std::vector<eval_data_type> &statements() { return statements_; }
 
@@ -185,6 +191,11 @@ class parser_type {
   };
 
 
+  struct variable_data_type {
+    size_t index;
+    // TODO. type
+  };
+
   bool anchor_jump_here_( size_t idx );
 
   bool statement_parser_( const token_type &last_token );
@@ -207,10 +218,13 @@ class parser_type {
   std::vector<eval_data_type>               operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                   tokens_;
   std::vector<grammar_state_type>           grammar_state_;
+  std::map<std::string,variable_data_type>  variables_;
 
   size_t                                    char_no_;
   size_t                                    curly_braces_;
+  size_t                                    current_new_var_idx_;
   size_t                                    line_no_;
+  size_t                                    new_variable_index_;
   size_t                                    tokens_parsed_;
 
   lex_mode_type                             lex_mode_;

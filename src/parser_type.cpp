@@ -82,15 +82,6 @@ namespace {
    
   };
 
-
-  struct variable_data_type {
-    size_t index;
-    // TODO. type
-  };
-
-  std::map<std::string,variable_data_type> variables_;
-  size_t                                   new_variable_index_ = 0U;
-  size_t                                   current_new_var_idx = 0U;
 }
 
 
@@ -117,7 +108,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_PUSHADDR ) );
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
 	  statements_.back().addr_arg = iter->second.index;
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
@@ -164,10 +155,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
-	  // TODO. how to distinguish between
-	  //   x = 5 ; // x needs to be a pushaddr
-	  //   7 > x ; // x needs to be a copyfromaddr
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_PUSHADDR ) );
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
 	  statements_.back().addr_arg = iter->second.index;
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
@@ -219,15 +207,33 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_ERROR;
       }
       else {
-	// Check previous operand. If it is an addr,
-	// we need to do a copyfromaddr for read-instances
-	if ( !statements_.empty() && statements_.rbegin()->id == EVAL_ID_TYPE_OP_PUSHADDR ) {
-	  if ( last_token.id != TOKEN_ID_TYPE_ASSIGN ) {
-	    statements_.rbegin()->id = EVAL_ID_TYPE_OP_COPYFROMADDR;
+	
+	if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+	  // If we've come across an assignment token, the
+	  // most recent statement must be a copyfromaddress
+	  // (i.e., a variable name). We will convert this to
+	  // a push-addr, because the assign-op needs that addr
+	  // for the assignment
+	  //
+	  if ( statements_.empty() ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  else if ( statements_.rbegin()->id != EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  else {
+	    statements_.rbegin()->id = EVAL_ID_TYPE_OP_PUSHADDR;
 	  }
 	}
-	update_stacks_with_operator_( new_eval_id_type );
-	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+
+	if ( parse_mode_ != PARSE_MODE_ERROR ) {
+	  if ( !update_stacks_with_operator_( new_eval_id_type ) ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  else {
+	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+	  }
+	}
       }
     }
     else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
@@ -758,12 +764,14 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	    }
 	    else {
-	      current_new_var_idx = new_variable_index_;
-	      std::cout << "debug: current_new_var_idx set to " << current_new_var_idx << "\n";
+	      // TODO. always add doubles on 8-byte boundary,
+	      // always add int32's on 4-byte boundary
+	      //
+	      current_new_var_idx_ = new_variable_index_;
 	      new_variable_index_ += 8U; // size of double
 
 	      variable_data_type new_variable;
-	      new_variable.index  = current_new_var_idx;
+	      new_variable.index  = current_new_var_idx_;
 	      variables_.insert( std::make_pair( last_token.text, new_variable ) );
 	      std::cout << "created " << last_token.text << " at " << new_variable.index << "\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
@@ -794,7 +802,7 @@ bool parser_type::parse_char( char c )
 	    }
 	    else {
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
-	      statements_.back().addr_arg = current_new_var_idx;
+	      statements_.back().addr_arg = current_new_var_idx_;
 	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }
