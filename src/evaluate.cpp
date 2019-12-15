@@ -393,20 +393,14 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK:
+    case EVAL_ID_TYPE_OP_COPYFROMADDR:
       {
-	if ( evaluation_stack.size() < 1 ) {
-	  return false;
-	}
-
-	size_t src_idx = (evaluation_stack.rbegin() + 1U)->addr;
-
 	double new_value;
-	char *src = &(data[src_idx]);
+	char *src = &(data[iter->addr_arg]);
 	char *dst = reinterpret_cast<char*>( &new_value );
 	std::copy( src, src+8U, dst );
 
-	evaluation_stack.back().value = new_value;
+	evaluation_stack.emplace_back( operand_data_type( new_value ) );
       }
       break;
 

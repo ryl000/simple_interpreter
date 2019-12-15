@@ -57,8 +57,8 @@ namespace {
     ,{ 0,  "jmp" }
 
     ,{ 0,  "push-addr" }
-    ,{ 0,  "copytoaddrimmediate" }
-    ,{ 0,  "copyfromaddronstack" }
+    ,{ 0,  "copytoaddr" }
+    ,{ 0,  "copyfromaddr" }
 
     ,{ 8, "add" }
     ,{ 8, "subtract" }
@@ -164,6 +164,9 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
+	  // TODO. how to distinguish between
+	  //   x = 5 ; // x needs to be a pushaddr
+	  //   7 > x ; // x needs to be a copyfromaddr
 	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_PUSHADDR ) );
 	  statements_.back().addr_arg = iter->second.index;
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
@@ -216,14 +219,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_ERROR;
       }
       else {
-	// TODO. check previous operand. If it is an addr,
+	// Check previous operand. If it is an addr,
 	// we need to do a copyfromaddr for read-instances
 	if ( !statements_.empty() && statements_.rbegin()->id == EVAL_ID_TYPE_OP_PUSHADDR ) {
 	  if ( last_token.id != TOKEN_ID_TYPE_ASSIGN ) {
-	    // TODO. instead of adding a new instruction, mutate the previous one
-	    //  to "copyfromaddrimmediate"
-	    //
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK ) );
+	    statements_.rbegin()->id = EVAL_ID_TYPE_OP_COPYFROMADDR;
 	  }
 	}
 	update_stacks_with_operator_( new_eval_id_type );
@@ -1011,7 +1011,7 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	"\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_PUSHADDR &&
-	      iter->id <= EVAL_ID_TYPE_OP_COPYTOADDR ) {
+	      iter->id <= EVAL_ID_TYPE_OP_COPYFROMADDR ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
 	"\n";

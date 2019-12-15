@@ -43,7 +43,7 @@ enum eval_id_type {
 
   ,EVAL_ID_TYPE_OP_PUSHADDR
   ,EVAL_ID_TYPE_OP_COPYTOADDR
-  ,EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK
+  ,EVAL_ID_TYPE_OP_COPYFROMADDR
 
   // NOTE: from this point down,
   //  it is assumed these enums match up
