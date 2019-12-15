@@ -22,12 +22,9 @@
 
 #pragma once
 
-#include <string>
-
 
 enum eval_id_type {
   EVAL_ID_TYPE_PUSHD = 0
-  ,EVAL_ID_TYPE_PUSHN
   
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
@@ -38,8 +35,6 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_RPARENS
 
   ,EVAL_ID_TYPE_OP_FINALIZE
-
-  ,EVAL_ID_TYPE_OP_CREATE_DOUBLE
 
   ,EVAL_ID_TYPE_OP_CLEAR
   ,EVAL_ID_TYPE_OP_POP
@@ -83,7 +78,6 @@ struct eval_data_type {
 
   explicit eval_data_type( double in_value )
     :value( in_value )
-    ,name()
     ,id( EVAL_ID_TYPE_PUSHD )
     ,addr_arg( 0U )
     ,jump_arg( 0U )
@@ -92,7 +86,6 @@ struct eval_data_type {
 
   explicit eval_data_type( eval_id_type in_id )
     :value( 0.0 )
-    ,name()
     ,id( in_id )
     ,addr_arg( 0U )
     ,jump_arg( 0U )
@@ -100,7 +93,6 @@ struct eval_data_type {
   {}
   
   double              value;
-  std::string         name;
   eval_id_type        id;
   size_t              addr_arg;
   size_t              jump_arg;

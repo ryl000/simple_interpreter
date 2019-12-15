@@ -26,61 +26,46 @@
 
 
 namespace {
-  enum data_type {
-    DATA_TYPE_VALUE
-    ,DATA_TYPE_NAME
+
+  enum operand_type {
+    OPERAND_TYPE_DOUBLE
+    ,OPERAND_TYPE_INT32
+    ,OPERAND_TYPE_ADDR
   };
-
   
-  struct operand_type {
-    explicit operand_type( double in_value )
-      :name()
-      ,value( in_value )
-      ,type( DATA_TYPE_VALUE )
+  struct operand_data_type {
+    explicit operand_data_type( double in_value )
+      :value( in_value )
+      ,addr( 0U )
+      ,type( OPERAND_TYPE_DOUBLE )
     {}
 
-    explicit operand_type( const std::string &in_name )
-      :name( in_name )
-      ,value( 0.0 )
-      ,type( DATA_TYPE_NAME )
+    explicit operand_data_type( size_t in_addr )
+      :value( 0. )
+      ,addr( in_addr )
+      ,type( OPERAND_TYPE_ADDR )
     {}
-
-    bool get_value( const std::map<std::string,double> &variables, double *out_value )
-    {
-      if ( type == DATA_TYPE_VALUE ) {
-	*out_value = value;
-	return true;
-      }
-      else {
-	std::map<std::string,double>::const_iterator iter = variables.find( name );
-	if ( iter == variables.end() ) {
-	  return false;
-	}
-	*out_value = iter->second;
-	return true;
-      }
-    }
 
     void set_value( double in_value )
     {
       value = in_value;
-      type = DATA_TYPE_VALUE;
+      type  = OPERAND_TYPE_DOUBLE;
     }
     
-    std::string name;
-    double      value;
-    data_type   type;
+    double       value;
+    size_t       addr;
+    operand_type type;
   };
+  
 }
 
 
 bool evaluate(
 	      const std::vector<eval_data_type> &expression
-	      ,std::map<std::string,double>      &variables
 	      ,std::vector<char>                 &data
 	      )
 {
-  std::vector<operand_type> evaluation_stack;
+  std::vector<operand_data_type> evaluation_stack;
 
   size_t  iter_increment           = 1U;
 
@@ -93,15 +78,11 @@ bool evaluate(
     
     switch ( iter->id ) {
     case EVAL_ID_TYPE_PUSHD:
-      evaluation_stack.push_back( operand_type( iter->value ) );
-      break;
-
-    case EVAL_ID_TYPE_PUSHN:
-      evaluation_stack.push_back( operand_type( iter->name ) );
+      evaluation_stack.push_back( operand_data_type( iter->value ) );
       break;
 
     case EVAL_ID_TYPE_OP_PUSHADDR:
-      evaluation_stack.push_back( operand_type( static_cast<double>( iter->addr_arg ) ) ); // TODO. change this!
+      evaluation_stack.push_back( operand_data_type( iter->addr_arg ) );
       break;
 
     case EVAL_ID_TYPE_OP_NOT:
@@ -110,11 +91,7 @@ bool evaluate(
 	  return false;
 	}
 	  
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double value = evaluation_stack.back().value;
 	  
 	evaluation_stack.back().set_value( (value == 0.0) ? 1.0 : 0.0 );
       }
@@ -126,11 +103,7 @@ bool evaluate(
 	  return false;
 	}
 	  
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double value = evaluation_stack.back().value;
 	  
 	evaluation_stack.back().set_value( -1.0 * value );
       }
@@ -142,16 +115,8 @@ bool evaluate(
 	  return false;
 	}
 	  
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	double result = value1 + value2;
 	evaluation_stack.pop_back();
@@ -165,16 +130,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	double result = value1 - value2;
 	evaluation_stack.pop_back();
@@ -189,16 +146,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	if ( value2 == 0.0 ) {
 	  return false;
@@ -216,16 +165,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	double result = value1 * value2;
 	evaluation_stack.pop_back();
@@ -239,16 +180,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 == value2 );
 	evaluation_stack.pop_back();
@@ -262,16 +195,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 != value2 );
 	evaluation_stack.pop_back();
@@ -285,16 +210,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 >= value2 );
 	evaluation_stack.pop_back();
@@ -308,16 +225,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 > value2 );
 	evaluation_stack.pop_back();
@@ -331,16 +240,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 <= value2 );
 	evaluation_stack.pop_back();
@@ -354,16 +255,8 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-	double value2;
-	bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	if ( !value2_found ) {
-	  return false;
-	}
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
+	double value2 = (evaluation_stack.rbegin()     )->value;
 
 	bool result = ( value1 < value2 );
 	evaluation_stack.pop_back();
@@ -377,20 +270,11 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
 	bool result = ( value1 != 0.0 );
-	if ( result ) {
-	  double value2;
-	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	  if ( !value2_found ) {
-	    return false;
-	  }
 
+	if ( result ) {
+	  double value2 = (evaluation_stack.rbegin()     )->value;
 	  result &= (value2 != 0.0);
 	}
 
@@ -405,20 +289,11 @@ bool evaluate(
 	  return false;
 	}
 
-	double value1;
-	bool value1_found = (evaluation_stack.rbegin() + 1)->get_value( variables, &value1 );
-	if ( !value1_found ) {
-	  return false;
-	}
-
+	double value1 = (evaluation_stack.rbegin() + 1U)->value;
 	bool result = ( value1 != 0.0 );
-	if ( !result ) {
-	  double value2;
-	  bool value2_found = (evaluation_stack.rbegin())->get_value( variables, &value2 );
-	  if ( !value2_found ) {
-	    return false;
-	  }
 
+	if ( !result ) {
+	  double value2 = (evaluation_stack.rbegin()     )->value;
 	  result |= (value2 != 0.0);
 	}
 
@@ -433,21 +308,9 @@ bool evaluate(
 	  return false;
 	}
 
-	size_t dst_idx;
-	{
-	  double new_value;
-	  bool value_found = ( evaluation_stack.rbegin() + 1U)->get_value( variables, &new_value );
-	  if ( !value_found ) {
-	    return false;
-	  }
-	  dst_idx = static_cast<size_t>( new_value ); // TODO. change this!
-	}
+	size_t dst_idx = (evaluation_stack.rbegin() + 1U)->addr;
 
-	double new_value;
-	bool value_found = evaluation_stack.rbegin()->get_value( variables, &new_value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double new_value = (evaluation_stack.rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &new_value );
 	std::copy( src, src+8U, &(data[dst_idx]) );
@@ -457,32 +320,10 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_CREATE_DOUBLE:
-      {
-	if ( evaluation_stack.empty() ) {
-	  return false;
-	}
-	if ( evaluation_stack.back().type != DATA_TYPE_NAME ) {
-	  return false;
-	}
-
-	std::map<std::string,double>::iterator iter = variables.find( evaluation_stack.back().name );
-	if ( iter != variables.end() ) {
-	  return false;
-	}
-
-	variables.insert( std::make_pair( evaluation_stack.back().name, 0.0 ) );
-      }
-      break;
-
     case EVAL_ID_TYPE_OP_CLEAR:
       {
 	if ( !evaluation_stack.empty() ) {
-	  double value;
-	  bool value_found = evaluation_stack.back().get_value( variables, &value );
-	  if ( !value_found ) {
-	    return false;
-	  }
+	  double value = (evaluation_stack.rbegin())->value;
 	  std::cout << " => " << value << "\n";
 	  if ( evaluation_stack.size() > 1 ) {
 	    std::cout << "WARNING: final stack size is " << evaluation_stack.size() << "\n";
@@ -510,11 +351,7 @@ bool evaluate(
 	  return false;
 	}
 
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double value = (evaluation_stack.rbegin())->value;
 
 	if ( value != 0.0 ) {
 	  iter_increment = iter->jump_arg;
@@ -528,12 +365,7 @@ bool evaluate(
 	  return false;
 	}
 
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
-
+	double value = (evaluation_stack.rbegin())->value;
 	if ( value == 0.0 ) {
 	  iter_increment = iter->jump_arg;
 	}
@@ -546,11 +378,7 @@ bool evaluate(
 	  return false;
 	}
 
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double value = (evaluation_stack.rbegin())->value;
 
 	if ( value == 0.0 ) {
 	  iter_increment = iter->jump_arg;
@@ -571,15 +399,7 @@ bool evaluate(
 	  return false;
 	}
 
-	size_t src_idx;
-	{
-	  double new_value;
-	  bool value_found = ( evaluation_stack.rbegin() + 1U)->get_value( variables, &new_value );
-	  if ( !value_found ) {
-	    return false;
-	  }
-	  src_idx = static_cast<size_t>( new_value ); // TODO. change this!
-	}
+	size_t src_idx = (evaluation_stack.rbegin() + 1U)->addr;
 
 	double new_value;
 	char *src = &(data[src_idx]);
@@ -596,11 +416,7 @@ bool evaluate(
 	  return false;
 	}
 
-	double value;
-	bool value_found = evaluation_stack.back().get_value( variables, &value );
-	if ( !value_found ) {
-	  return false;
-	}
+	double value = (evaluation_stack.rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &value );
 	std::copy( src, src+8U, &(data[iter->addr_arg]) );

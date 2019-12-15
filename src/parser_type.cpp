@@ -40,7 +40,6 @@ namespace {
   //
   const operator_data_type operator_data[] = {
     { 0, "push double" }
-    ,{ 0, "push name" }
 
     ,{ 10, "not" }
     ,{ 10, "negate" }
@@ -51,8 +50,6 @@ namespace {
     ,{ 1, ")" }
 
     ,{ 0, ";" }
-
-    ,{ 11, "create" }
 
     ,{ 0,  "clear-stack" }
     ,{ 0,  "pop" }
@@ -114,9 +111,6 @@ bool parser_type::statement_parser_( const token_type &last_token )
   case PARSE_MODE_START:
     {
       if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	// TODO. need to defer on copyfrom/to, until we know
-	// if this is an assignment or not?
-	//
 	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
 	if ( iter == variables_.end() ) {
 	  std::cout << "ERROR: variable cannot be found\n";
@@ -226,6 +220,9 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	// we need to do a copyfromaddr for read-instances
 	if ( !statements_.empty() && statements_.rbegin()->id == EVAL_ID_TYPE_OP_PUSHADDR ) {
 	  if ( last_token.id != TOKEN_ID_TYPE_ASSIGN ) {
+	    // TODO. instead of adding a new instruction, mutate the previous one
+	    //  to "copyfromaddrimmediate"
+	    //
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK ) );
 	  }
 	}
@@ -1006,9 +1003,6 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	  ; ++iter ) {
     if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
       std::cout << "pushd " << iter->value << "\n";
-    }
-    else if ( iter->id == EVAL_ID_TYPE_PUSHN ) {
-      std::cout << "pushn " << iter->name << "\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
 	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {

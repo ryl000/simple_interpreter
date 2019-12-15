@@ -93,12 +93,10 @@ int main( int argc, char* argv[] )
 
   if ( process_ok ) {
 
-    std::map<std::string,double> variables;
-
     print_statements( parser.statements() );
 
     std::vector<char> data( 1000 ); // TODO. size this correctly
-    if ( !evaluate( parser.statements(), variables, data ) ) {
+    if ( !evaluate( parser.statements(), data ) ) {
       std::cerr << "ERROR: evaluation error\n";
     }
 
