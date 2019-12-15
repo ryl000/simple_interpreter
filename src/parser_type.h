@@ -109,8 +109,6 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_NOT
 
-    ,TOKEN_ID_TYPE_COMMA
-
     ,TOKEN_ID_TYPE_LPARENS
     ,TOKEN_ID_TYPE_RPARENS
 
@@ -140,6 +138,8 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_AND
     ,TOKEN_ID_TYPE_OR
+
+    ,TOKEN_ID_TYPE_COMMA
 
     ,TOKEN_ID_TYPE_ASSIGN
 

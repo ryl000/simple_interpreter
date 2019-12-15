@@ -29,8 +29,6 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
   
-  ,EVAL_ID_TYPE_OP_COMMA
-
   ,EVAL_ID_TYPE_OP_LPARENS
   ,EVAL_ID_TYPE_OP_RPARENS
 
@@ -69,6 +67,8 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_AND
   ,EVAL_ID_TYPE_OP_OR
   
+  ,EVAL_ID_TYPE_OP_COMMA
+
   ,EVAL_ID_TYPE_OP_ASSIGN
 
 };

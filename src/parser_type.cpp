@@ -44,8 +44,6 @@ namespace {
     ,{ 10, "not" }
     ,{ 10, "negate" }
    
-    ,{ 2, "comma" }
-
     ,{ 1, "(" }
     ,{ 1, ")" }
 
@@ -78,6 +76,8 @@ namespace {
     ,{ 5, "and" }
     ,{ 4, "or" }
    
+    ,{ 2, "comma" }
+
     ,{ 3, "assign" }
    
   };
