@@ -100,6 +100,10 @@ bool evaluate(
       evaluation_stack.push_back( operand_type( iter->name ) );
       break;
 
+    case EVAL_ID_TYPE_OP_PUSHADDR:
+      evaluation_stack.push_back( operand_type( static_cast<double>( iter->addr_arg ) ) ); // TODO. change this!
+      break;
+
     case EVAL_ID_TYPE_OP_NOT:
       {
 	if ( evaluation_stack.empty() ) {
@@ -428,12 +432,15 @@ bool evaluate(
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
 	}
-	if ( (evaluation_stack.rbegin() + 1)->type != DATA_TYPE_NAME ) {
-	  return false;
-	}
-	std::map<std::string,double>::iterator iter = variables.find( (evaluation_stack.rbegin() + 1)->name );
-	if ( iter == variables.end() ) {
-	  return false;
+
+	size_t dst_idx;
+	{
+	  double new_value;
+	  bool value_found = ( evaluation_stack.rbegin() + 1U)->get_value( variables, &new_value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  dst_idx = static_cast<size_t>( new_value ); // TODO. change this!
 	}
 
 	double new_value;
@@ -441,8 +448,12 @@ bool evaluate(
 	if ( !value_found ) {
 	  return false;
 	}
+
+	char *src = reinterpret_cast<char*>( &new_value );
+	std::copy( src, src+8U, &(data[dst_idx]) );
+
 	evaluation_stack.pop_back();
-	iter->second = new_value;
+	evaluation_stack.back().value = new_value;
       }
       break;
 
@@ -554,7 +565,29 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYFROMADDR:
+    case EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK:
+      {
+	if ( evaluation_stack.size() < 1 ) {
+	  return false;
+	}
+
+	size_t src_idx;
+	{
+	  double new_value;
+	  bool value_found = ( evaluation_stack.rbegin() + 1U)->get_value( variables, &new_value );
+	  if ( !value_found ) {
+	    return false;
+	  }
+	  src_idx = static_cast<size_t>( new_value ); // TODO. change this!
+	}
+
+	double new_value;
+	char *src = &(data[src_idx]);
+	char *dst = reinterpret_cast<char*>( &new_value );
+	std::copy( src, src+8U, dst );
+
+	evaluation_stack.back().value = new_value;
+      }
       break;
 
     case EVAL_ID_TYPE_OP_COPYTOADDR:

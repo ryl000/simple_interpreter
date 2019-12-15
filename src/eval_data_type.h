@@ -48,8 +48,9 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JCEQZ
   ,EVAL_ID_TYPE_OP_JMP
 
-  ,EVAL_ID_TYPE_OP_COPYFROMADDR
+  ,EVAL_ID_TYPE_OP_PUSHADDR
   ,EVAL_ID_TYPE_OP_COPYTOADDR
+  ,EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK
 
   // NOTE: from this point down,
   //  it is assumed these enums match up
@@ -84,15 +85,6 @@ struct eval_data_type {
     :value( in_value )
     ,name()
     ,id( EVAL_ID_TYPE_PUSHD )
-    ,addr_arg( 0U )
-    ,jump_arg( 0U )
-    ,pop_arg( 0U )
-  {}
-
-  explicit eval_data_type( const std::string &in_name )
-    :value( 0.0 )
-    ,name( in_name )
-    ,id( EVAL_ID_TYPE_PUSHN )
     ,addr_arg( 0U )
     ,jump_arg( 0U )
     ,pop_arg( 0U )

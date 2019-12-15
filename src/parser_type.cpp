@@ -61,8 +61,9 @@ namespace {
     ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
 
-    ,{ 0,  "copyfromaddr" }
-    ,{ 0,  "copytoaddr" }
+    ,{ 0,  "push-addr" }
+    ,{ 0,  "copytoaddrimmediate" }
+    ,{ 0,  "copyfromaddronstack" }
 
     ,{ 8, "add" }
     ,{ 8, "subtract" }
@@ -113,12 +114,17 @@ bool parser_type::statement_parser_( const token_type &last_token )
   case PARSE_MODE_START:
     {
       if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
-	  update_stacks_with_operator_( EVAL_ID_TYPE_OP_CREATE_DOUBLE );
-	  parse_mode_ = PARSE_MODE_NAME_EXPECTED;
+	// TODO. need to defer on copyfrom/to, until we know
+	// if this is an assignment or not?
+	//
+	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
+	if ( iter == variables_.end() ) {
+	  std::cout << "ERROR: variable cannot be found\n";
+	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
-	  statements_.emplace_back( eval_data_type( last_token.text ) );
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_PUSHADDR ) );
+	  statements_.back().addr_arg = iter->second.index;
 	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
       }
@@ -155,12 +161,20 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	 || last_token.id == TOKEN_ID_TYPE_NAME ) {
       if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
 	statements_.emplace_back( std::atof( last_token.text.c_str() ) );
+	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
       }
       else {
-	// TODO. guard against keywords
-	statements_.emplace_back( eval_data_type( last_token.text ) );
+	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
+	if ( iter == variables_.end() ) {
+	  std::cout << "ERROR: variable cannot be found\n";
+	  parse_mode_ = PARSE_MODE_ERROR;
+	}
+	else {
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_PUSHADDR ) );
+	  statements_.back().addr_arg = iter->second.index;
+	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	}
       }
-      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
     }
     else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
 	      last_token.id == TOKEN_ID_TYPE_MINUS ||
@@ -208,6 +222,13 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_ERROR;
       }
       else {
+	// TODO. check previous operand. If it is an addr,
+	// we need to do a copyfromaddr for read-instances
+	if ( !statements_.empty() && statements_.rbegin()->id == EVAL_ID_TYPE_OP_PUSHADDR ) {
+	  if ( last_token.id != TOKEN_ID_TYPE_ASSIGN ) {
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDRONSTACK ) );
+	  }
+	}
 	update_stacks_with_operator_( new_eval_id_type );
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
@@ -223,19 +244,6 @@ bool parser_type::statement_parser_( const token_type &last_token )
     break;
 
     
-  case PARSE_MODE_NAME_EXPECTED:
-    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-      // TODO. guard against keywords
-      // TODO. guard against redefinitions (at the same block-depth)
-      statements_.emplace_back( eval_data_type( last_token.text ) );
-      parse_mode_ = PARSE_MODE_VARIABLE_DEFINITION_START;
-    }
-    else {
-      parse_mode_ = PARSE_MODE_ERROR;
-    }
-    break;
-
-
   case PARSE_MODE_VARIABLE_DEFINITION_START:
     if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
       if ( !update_stacks_with_operator_( EVAL_ID_TYPE_OP_ASSIGN ) ) {
@@ -1008,12 +1016,8 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	" " << iter->jump_arg <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
-      std::cout << operator_data[ iter->id ].text <<
-	" " << iter->addr_arg <<
-	"\n";
-    }
-    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDR ) {
+    else if ( iter->id >= EVAL_ID_TYPE_OP_PUSHADDR &&
+	      iter->id <= EVAL_ID_TYPE_OP_COPYTOADDR ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
 	"\n";

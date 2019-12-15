@@ -1,2 +1,5 @@
 double x;
 double y = 1 + 5;
+x = y = 7;
+
+y = x + 8;
