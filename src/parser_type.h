@@ -67,9 +67,9 @@ class parser_type {
     ,GRAMMAR_MODE_DEFINE_VARIABLE
     ,GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT
     ,GRAMMAR_MODE_CHECK_FOR_ASSIGN
-    ,GRAMMAR_MODE_IF_CLAUSE        // TODO. replace with more generic "branching" clause?
-    ,GRAMMAR_MODE_IF_EXPRESSION    // TODO. replace with more generic "branching" expression?
-    ,GRAMMAR_MODE_IF_STATEMENT     // TODO. replace with more generic "branching" statement?
+    ,GRAMMAR_MODE_BRANCH_CLAUSE        // TODO. replace with more generic "branching" clause?
+    ,GRAMMAR_MODE_BRANCH_EXPRESSION    // TODO. replace with more generic "branching" expression?
+    ,GRAMMAR_MODE_BRANCH_STATEMENT     // TODO. replace with more generic "branching" statement?
     ,GRAMMAR_MODE_ELSE_CHECK
     ,GRAMMAR_MODE_STATEMENT
     ,GRAMMAR_MODE_END_OF_INPUT
@@ -167,12 +167,14 @@ class parser_type {
     size_t               block_depth;
     grammar_mode_type    mode;
     size_t               jump_offset; // TODO. add multiple jump offsets, to allow for break statement inside loop?
+    size_t               loopback_offset;
     branching_mode_type  branching_mode;
 
     grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
       :block_depth( in_block_depth )
       ,mode( in_mode )
       ,jump_offset( 0U )
+      ,loopback_offset( 0U )
       ,branching_mode( BRANCHING_MODE_IF )
     {}
   };

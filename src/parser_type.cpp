@@ -55,6 +55,7 @@ namespace {
     ,{ 0,  "jeqz" }
     ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
+    ,{ 0,  "jmpb" }
 
     ,{ 0,  "push-addr" }
     ,{ 0,  "copytoaddr" }
@@ -739,13 +740,18 @@ bool parser_type::parse_char( char c )
 	case GRAMMAR_MODE_STATEMENT_START:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	    if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
-	      grammar_state_.back().mode = GRAMMAR_MODE_IF_STATEMENT;
+	      grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_STATEMENT;
 	      grammar_state_.back().branching_mode = BRANCHING_MODE_IF;
+	    }
+	    else if ( std::strcmp( "while", last_token.text.c_str() ) == 0 ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_STATEMENT;
+	      grammar_state_.back().branching_mode = BRANCHING_MODE_WHILE;
+	      grammar_state_.back().loopback_offset = statements_.size();
+	      std::cout << "debug: loopback_offset set to " << grammar_state_.back().loopback_offset << "\n";
 	    }
 	    else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
 	    }
-	    // TODO. add while
 	    // TODO. add int?
 	    // TODO. add function?
 	    else {
@@ -842,16 +848,16 @@ bool parser_type::parse_char( char c )
 	  }
 	  break;
 	  
-	case GRAMMAR_MODE_IF_STATEMENT:
+	case GRAMMAR_MODE_BRANCH_STATEMENT:
 	  if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	    grammar_state_.back().mode = GRAMMAR_MODE_IF_EXPRESSION;
+	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_EXPRESSION;
 	  }
 	  else {
 	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	  }
 	  break;
 
-	case GRAMMAR_MODE_IF_EXPRESSION:
+	case GRAMMAR_MODE_BRANCH_EXPRESSION:
 	  if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
 	    if ( !statement_parser_finalize_() ) {
 	      std::cerr << "ERROR(1): parse error on character " << c << "\n";
@@ -864,7 +870,7 @@ bool parser_type::parse_char( char c )
 	    //
 	    grammar_state_.back().jump_offset = statements_.size();
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JCEQZ ) );
-	    grammar_state_.back().mode = GRAMMAR_MODE_IF_CLAUSE;
+	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else if ( !statement_parser_( last_token ) ) {
@@ -908,14 +914,24 @@ bool parser_type::parse_char( char c )
 	      //
 	      while ( grammar_state_.size() > 1
 		      &&
-		      ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
+		      ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_BRANCH_CLAUSE)
 		      &&
 		      ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
 		grammar_state_.pop_back();
 
+		if ( (grammar_state_.rbegin())->branching_mode == BRANCHING_MODE_WHILE ) {
+		  // Put an unconditional jmp at the end of the previous while clause,
+		  // to go back to conditional check
+		  size_t new_jmp_idx = statements_.size();
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMPB ) );
+		  statements_.back().jump_arg = statements_.size() - grammar_state_.rbegin()->loopback_offset - 1U;  // TODO. unsigned subtract!
+		  grammar_state_.rbegin()->loopback_offset = 0U;
+		}
+
 		if ( (grammar_state_.rbegin())->branching_mode != BRANCHING_MODE_IF ) {
 		  // TODO. check return value?
 		  anchor_jump_here_( grammar_state_.back().jump_offset );
+		  grammar_state_.back().jump_offset = 0U;
 		}
 		else {
 		  grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
@@ -946,7 +962,7 @@ bool parser_type::parse_char( char c )
 	    // Save this new jmp to fix later
 	    grammar_state_.back().jump_offset = new_jmp_idx;
 	    
-	    grammar_state_.back().mode = GRAMMAR_MODE_IF_CLAUSE;
+	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
 	    grammar_state_.back().branching_mode = BRANCHING_MODE_ELSE;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
@@ -959,7 +975,7 @@ bool parser_type::parse_char( char c )
 	    //
 	    while ( grammar_state_.size() > 1
 		    &&
-		    ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_IF_CLAUSE)
+		    ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_BRANCH_CLAUSE)
 		    &&
 		    ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
 	      grammar_state_.pop_back();
@@ -1004,7 +1020,7 @@ bool parser_type::parse_char( char c )
 
   // Catch errors when parser not in a valid final state
   //
-  if ( c == '\0' ) {
+  if ( lex_mode_ == LEX_MODE_END_OF_INPUT ) {
     if ( !grammar_state_.empty() && ( grammar_state_.back().mode != GRAMMAR_MODE_END_OF_INPUT ) ) {
       std::cerr << "ERROR: grammar not terminated correctly!\n";
       std::cerr << "grammar mode is " << grammar_state_.back().mode << "\n";
@@ -1041,7 +1057,7 @@ void print_statements( const std::vector<eval_data_type> &statement )
       std::cout << "pushd " << iter->value << "\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
-	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
+	      iter->id <= EVAL_ID_TYPE_OP_JMPB ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->jump_arg <<
 	"\n";

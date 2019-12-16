@@ -67,6 +67,9 @@ bool evaluate(
 {
   std::vector<operand_data_type> evaluation_stack;
 
+  // TODO. make this sint32_t, because we need
+  // to be able to go backward
+  //
   size_t  iter_increment           = 1U;
 
 
@@ -389,6 +392,19 @@ bool evaluate(
 
     case EVAL_ID_TYPE_OP_JMP:
       {
+	iter_increment = iter->jump_arg;
+      }
+      break;
+
+    case EVAL_ID_TYPE_OP_JMPB:
+      {
+	// TODO. this needs to be fixed
+	// OR should we make JMP use an sint32_t
+	// directly (instead of a size_t)?
+	// AND the jump offset type needs to
+	// be smaller than size_t!
+	//
+	//
 	iter_increment = iter->jump_arg;
       }
       break;
