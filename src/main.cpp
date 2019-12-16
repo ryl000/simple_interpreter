@@ -42,7 +42,7 @@ int main( int argc, char* argv[] )
 
   bool cmd_line_mode = false;
   // handle command-line options
-  size_t iarg = 1U;
+  int iarg = 1;
   for ( ; iarg < argc; ++iarg ) {
     if ( argv[iarg][0] != '-' ) {
       break;

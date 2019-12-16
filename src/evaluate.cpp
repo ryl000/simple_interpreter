@@ -67,17 +67,16 @@ bool evaluate(
 {
   std::vector<operand_data_type> evaluation_stack;
 
-  // TODO. make this sint32_t, because we need
-  // to be able to go backward
+  // TODO. make this int16_t for 32-bit?
   //
-  size_t  iter_increment           = 1U;
+  int32_t  iter_increment           = 1;
 
 
   for ( std::vector<eval_data_type>::const_iterator iter = expression.begin()
 	  ; iter != expression.end()
 	  ; iter += iter_increment ) {
 
-    iter_increment = 1U;
+    iter_increment = 1;
     
     switch ( iter->id ) {
     case EVAL_ID_TYPE_PUSHD:
@@ -396,19 +395,6 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JMPB:
-      {
-	// TODO. this needs to be fixed
-	// OR should we make JMP use an sint32_t
-	// directly (instead of a size_t)?
-	// AND the jump offset type needs to
-	// be smaller than size_t!
-	//
-	//
-	iter_increment = iter->jump_arg;
-      }
-      break;
-
     case EVAL_ID_TYPE_OP_COPYFROMADDR:
       {
 	double new_value;
@@ -432,8 +418,14 @@ bool evaluate(
 	std::copy( src, src+8U, &(data[iter->addr_arg]) );
       }
       break;
+
+    case EVAL_ID_TYPE_OP_LPARENS:
+    case EVAL_ID_TYPE_OP_RPARENS:
+    case EVAL_ID_TYPE_OP_FINALIZE:
+    case EVAL_ID_TYPE_OP_COMMA:
+      // NOTE. These should never occur...
+      break;
     }
-      
   }
 
   return true;

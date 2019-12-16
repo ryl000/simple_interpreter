@@ -40,7 +40,6 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JEQZ
   ,EVAL_ID_TYPE_OP_JCEQZ
   ,EVAL_ID_TYPE_OP_JMP
-  ,EVAL_ID_TYPE_OP_JMPB
 
   ,EVAL_ID_TYPE_OP_PUSHADDR
   ,EVAL_ID_TYPE_OP_COPYTOADDR
@@ -81,7 +80,7 @@ struct eval_data_type {
     :value( in_value )
     ,id( EVAL_ID_TYPE_PUSHD )
     ,addr_arg( 0U )
-    ,jump_arg( 0U )
+    ,jump_arg( 0 )
     ,pop_arg( 0U )
   {}
 
@@ -89,13 +88,13 @@ struct eval_data_type {
     :value( 0.0 )
     ,id( in_id )
     ,addr_arg( 0U )
-    ,jump_arg( 0U )
+    ,jump_arg( 0 )
     ,pop_arg( 0U )
   {}
   
   double              value;
   eval_id_type        id;
   size_t              addr_arg;
-  size_t              jump_arg;
+  int32_t             jump_arg;  // TODO. handle 32-bit size_t by making this int16_t ?
   size_t              pop_arg;
 };

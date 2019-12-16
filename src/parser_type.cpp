@@ -55,7 +55,6 @@ namespace {
     ,{ 0,  "jeqz" }
     ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
-    ,{ 0,  "jmpb" }
 
     ,{ 0,  "push-addr" }
     ,{ 0,  "copytoaddr" }
@@ -278,6 +277,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
     }
     break;
 
+
+  case PARSE_MODE_ERROR:
+    // do nothing
+    break;
+
   }
 
   return ( parse_mode_ != PARSE_MODE_ERROR );
@@ -373,7 +377,7 @@ bool parser_type::update_stacks_with_operator_(
 	   || operator_stack_.back().id == EVAL_ID_TYPE_OP_OR ) {
 	// TODO. check return value?
 	anchor_jump_here_( operator_stack_.back().jump_arg );
-	statements_.back().jump_arg = 0U;
+	statements_.back().jump_arg = 0;
       }
 
       operator_stack_.pop_back();
@@ -747,7 +751,6 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_STATEMENT;
 	      grammar_state_.back().branching_mode = BRANCHING_MODE_WHILE;
 	      grammar_state_.back().loopback_offset = statements_.size();
-	      std::cout << "debug: loopback_offset set to " << grammar_state_.back().loopback_offset << "\n";
 	    }
 	    else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
@@ -923,8 +926,8 @@ bool parser_type::parse_char( char c )
 		  // Put an unconditional jmp at the end of the previous while clause,
 		  // to go back to conditional check
 		  size_t new_jmp_idx = statements_.size();
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMPB ) );
-		  statements_.back().jump_arg = statements_.size() - grammar_state_.rbegin()->loopback_offset - 1U;  // TODO. unsigned subtract!
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+		  statements_.back().jump_arg = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
 		  grammar_state_.rbegin()->loopback_offset = 0U;
 		}
 
@@ -967,8 +970,6 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
-	    bool mode_set = false;
-
 	    anchor_jump_here_( grammar_state_.back().jump_offset );
 	    
 	    // "unwind" if/else as applicable
@@ -987,6 +988,10 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    reprocess                  = true;
 	  }
+	  break;
+
+	case GRAMMAR_MODE_BRANCH_CLAUSE:
+	  // TODO. do we need this as an enum?
 	  break;
 	  
 	case GRAMMAR_MODE_END_OF_INPUT:
@@ -1057,7 +1062,7 @@ void print_statements( const std::vector<eval_data_type> &statement )
       std::cout << "pushd " << iter->value << "\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
-	      iter->id <= EVAL_ID_TYPE_OP_JMPB ) {
+	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->jump_arg <<
 	"\n";
