@@ -502,8 +502,8 @@ bool parser_type::parse_char( char c )
 	  lex_mode_ = LEX_MODE_COMMENT;
 	}
 	else if ( c == '\0' ) {
-	  // end of input, nothing needs
-	  // to be done
+	  lex_mode_ = LEX_MODE_END_OF_INPUT;
+	  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_END_OF_INPUT ) );
 	}
 	else {
 	  lex_mode_ = LEX_MODE_ERROR;
@@ -704,6 +704,7 @@ bool parser_type::parse_char( char c )
 	}
 	break;
 
+      case LEX_MODE_END_OF_INPUT:
       case LEX_MODE_ERROR:
 	// Do nothing
 	//
@@ -724,15 +725,16 @@ bool parser_type::parse_char( char c )
   // Stage 2: Grammar
   //
   if ( tokens_.size() > tokens_parsed_ ) {
-
     
     while ( tokens_parsed_ < tokens_.size() ) {
 
       bool reprocess = false;
 
       const token_type &last_token = tokens_[tokens_parsed_];
-      
+
       do {
+	reprocess = false;
+	
 	switch ( grammar_state_.back().mode ) {
 	case GRAMMAR_MODE_STATEMENT_START:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
@@ -765,6 +767,9 @@ bool parser_type::parse_char( char c )
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	    }
+	  }
+	  else if ( last_token.id == TOKEN_ID_TYPE_END_OF_INPUT ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_END_OF_INPUT;
 	  }
 	  else {
 	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
@@ -869,7 +874,6 @@ bool parser_type::parse_char( char c )
 	  break;
 	  
 	case GRAMMAR_MODE_STATEMENT:
-	  reprocess = false;
 	  if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
 	    if ( !statement_parser_finalize_() ) {
 	      std::cerr << "ERROR(3): parse error on character " << c << "\n";
@@ -897,7 +901,6 @@ bool parser_type::parse_char( char c )
 
 	case GRAMMAR_MODE_STATEMENT_END:
 	  {
-	    reprocess = false;
 	    bool mode_set = false;
 	    if ( (grammar_state_.size() > 1) ) {
 
@@ -970,6 +973,7 @@ bool parser_type::parse_char( char c )
 	  }
 	  break;
 	  
+	case GRAMMAR_MODE_END_OF_INPUT:
 	case GRAMMAR_MODE_ERROR:
 	  // Do nothing
 	  //
@@ -1001,16 +1005,10 @@ bool parser_type::parse_char( char c )
   // Catch errors when parser not in a valid final state
   //
   if ( c == '\0' ) {
-    if ( !grammar_state_.empty() ) {
-      if ( grammar_state_.back().mode == GRAMMAR_MODE_ELSE_CHECK ) {
-	// TODO. check return value?
-	anchor_jump_here_( grammar_state_.back().jump_offset );
-      }
-      else if ( grammar_state_.back().mode != GRAMMAR_MODE_STATEMENT_START ) {
-	std::cerr << "ERROR: grammar not terminated correctly!\n";
-	std::cerr << "grammar mode is " << grammar_state_.back().mode << "\n";
-	return false;
-      }
+    if ( !grammar_state_.empty() && ( grammar_state_.back().mode != GRAMMAR_MODE_END_OF_INPUT ) ) {
+      std::cerr << "ERROR: grammar not terminated correctly!\n";
+      std::cerr << "grammar mode is " << grammar_state_.back().mode << "\n";
+      return false;
     }
     
     if ( parse_mode_ != PARSE_MODE_START ) {

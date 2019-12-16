@@ -72,6 +72,7 @@ class parser_type {
     ,GRAMMAR_MODE_IF_STATEMENT     // TODO. replace with more generic "branching" statement?
     ,GRAMMAR_MODE_ELSE_CHECK
     ,GRAMMAR_MODE_STATEMENT
+    ,GRAMMAR_MODE_END_OF_INPUT
     ,GRAMMAR_MODE_ERROR
   };
 
@@ -104,6 +105,8 @@ class parser_type {
     ,LEX_MODE_AND_CHECK
 
     ,LEX_MODE_OR_CHECK
+
+    ,LEX_MODE_END_OF_INPUT
   };
 
 
@@ -121,6 +124,8 @@ class parser_type {
 
     ,TOKEN_ID_TYPE_LCURLY_BRACE
     ,TOKEN_ID_TYPE_RCURLY_BRACE
+
+    ,TOKEN_ID_TYPE_END_OF_INPUT
 
     // NOTE: from this point down,
     //  it is assumed these enums match up
