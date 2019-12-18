@@ -118,16 +118,27 @@ bool parser_type::statement_parser_( const token_type &last_token )
   case PARSE_MODE_START:
     {
       if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	// TODO. scoping
-	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
-	if ( iter == variables_.end() ) {
+	// TODO. unify name lookup code
+	bool symbol_found = false;
+	for ( auto st_iter = symbol_table_.rbegin()
+		; !symbol_found && st_iter != symbol_table_.rend()
+		; ++st_iter ) {
+	  auto iter = st_iter->find( last_token.text );
+	  if ( iter != st_iter->end() ) {
+	    symbol_found = true;
+	    // TODO. depending on the level, this is either a stack-pointer-relative offset,
+	    // or an absolute offset. Or maybe "absolute" is stack-frame-relative as well,
+	    // just with a stack frame base addr of 0?
+	    //
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+	    statements_.back().addr_arg = iter->second.index;
+	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	  }
+	}
+
+	if ( !symbol_found ) {
 	  std::cout << "ERROR(A): variable " << last_token.text << " cannot be found\n";
 	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-	else {
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	  statements_.back().addr_arg = iter->second.index;
-	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	}
       }
       else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
@@ -166,17 +177,30 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
       }
       else {
-	// TODO. scoping
-	std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
-	if ( iter == variables_.end() ) {
-	  std::cout << "ERROR(B): variable cannot be found\n";
+
+	// TODO. unify name lookup code
+	bool symbol_found = false;
+	for ( auto st_iter = symbol_table_.rbegin()
+		; !symbol_found && st_iter != symbol_table_.rend()
+		; ++st_iter ) {
+	  auto iter = st_iter->find( last_token.text );
+	  if ( iter != st_iter->end() ) {
+	    symbol_found = true;
+	    // TODO. depending on the level, this is either a stack-pointer-relative offset,
+	    // or an absolute offset. Or maybe "absolute" is stack-frame-relative as well,
+	    // just with a stack frame base addr of 0?
+	    //
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+	    statements_.back().addr_arg = iter->second.index;
+	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	  }
+	}
+	
+	if ( !symbol_found ) {
+	  std::cout << "ERROR(B): variable " << last_token.text << " cannot be found\n";
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
-	else {
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	  statements_.back().addr_arg = iter->second.index;
-	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	}
+
       }
     }
     else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
@@ -763,13 +787,38 @@ bool parser_type::parse_char( char c )
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
-	    // TODO. variable scoping
 	    ++curly_braces_;
+	    symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
+	    // TODO. the following two are related to stack frame, not curly brace level!
+	    // Instead of being initialized to zero, they should be set to top-most value
+	    //
+	    // ("global")
+	    // stack-base 0
+	    //
+	    // fn ()
+	    // {
+	    //   stack-base is non-zero
+	    //   push new symbol_table_
+	    //   push new current_new_var_idx_ (value = 0)
+	    //   push new new_variable_index_ (value = 0)
+	    //   {
+	    //     push new symbol_table_
+	    //     push new current_new_var_idx_ (value = topmost current_new_var_idx_)
+	    //     push new new_variable_index_ (value = topmost new_variable_index_)
+	    //   }
+	    //   pop symboL_table_
+	    //   pop current_new_var_idx_
+	    //   pop new_variable_index_
+	    //     
+	    current_new_var_idx_.push_back( 0U );
+	    new_variable_index_.push_back( 0U );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
-	    // TODO. variable scoping
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
+	      symbol_table_.pop_back();
+	      current_new_var_idx_.pop_back();
+	      new_variable_index_.pop_back();
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	      reprocess                  = true;
 	    }
@@ -795,8 +844,8 @@ bool parser_type::parse_char( char c )
 	    }
 	    
 	    // TODO. scoping
-	    std::map<std::string,variable_data_type>::iterator iter = variables_.find( last_token.text );
-	    if ( iter != variables_.end() ) {
+	    auto iter = symbol_table_.rbegin()->find( last_token.text );
+	    if ( iter != symbol_table_.rbegin()->end() ) {
 	      std::cout << "ERROR: variable already defined\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	      break;
@@ -805,13 +854,13 @@ bool parser_type::parse_char( char c )
 	    // TODO. always add doubles on 8-byte boundary,
 	    // always add int32's on 4-byte boundary
 	    //
-	    current_new_var_idx_ = new_variable_index_;
-	    new_variable_index_ += 8U; // size of double
+	    *(current_new_var_idx_.rbegin()) = *(new_variable_index_.rbegin());
+	    *(new_variable_index_.rbegin()) += 8U; // size of double
 
-	    variable_data_type new_variable;
-	    new_variable.index  = current_new_var_idx_;
+	    symbol_table_data_type new_variable;
+	    new_variable.index  = *(current_new_var_idx_.rbegin());
 	    // TODO. more efficient insert, using find_lower_bound
-	    variables_.insert( std::make_pair( last_token.text, new_variable ) );
+	    symbol_table_.rbegin()->insert( std::make_pair( last_token.text, new_variable ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
 	  }
 	  else {
@@ -839,7 +888,7 @@ bool parser_type::parse_char( char c )
 	    }
 	    else {
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
-	      statements_.back().addr_arg = current_new_var_idx_;
+	      statements_.back().addr_arg = *(current_new_var_idx_.rbegin());
 	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }

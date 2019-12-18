@@ -39,12 +39,12 @@ class parser_type {
     ,operator_stack_()
     ,tokens_()
     ,grammar_state_()
-    ,variables_()
+    ,symbol_table_( 1U )
+    ,current_new_var_idx_( 1U )
+    ,new_variable_index_( 1U )
     ,char_no_(0U)
     ,curly_braces_(0U)
-    ,current_new_var_idx_(0U)
     ,line_no_(0U)
-    ,new_variable_index_(0U)
     ,tokens_parsed_(0U)
     ,lex_mode_( LEX_MODE_START )
     ,parse_mode_( PARSE_MODE_START )
@@ -54,7 +54,7 @@ class parser_type {
 
   bool parse_char( char c );
 
-  size_t data_size() { return new_variable_index_; }
+  size_t data_size() { return new_variable_index_.front(); }
 
   const std::vector<eval_data_type> &statements() { return statements_; }
 
@@ -206,7 +206,7 @@ class parser_type {
   };
 
 
-  struct variable_data_type {
+  struct symbol_table_data_type {
     size_t index;
     // TODO. type
   };
@@ -227,23 +227,24 @@ class parser_type {
 				    eval_id_type                       eval_id
 				   );
 
-  std::string                               current_token_;
-  std::vector<eval_data_type>               statements_;
-  std::vector<size_t>                       lparens_; // TODO. convert this to a deque?
-  std::vector<eval_data_type>               operator_stack_; // TODO. convert this to a deque?
-  std::vector<token_type>                   tokens_;
-  std::vector<grammar_state_type>           grammar_state_;
-  std::map<std::string,variable_data_type>  variables_;
+  std::string                                                current_token_;
+  std::vector<eval_data_type>                                statements_;
+  std::vector<size_t>                                        lparens_; // TODO. convert this to a deque?
+  std::vector<eval_data_type>                                operator_stack_; // TODO. convert this to a deque?
+  std::vector<token_type>                                    tokens_;
+  std::vector<grammar_state_type>                            grammar_state_;
+  
+  std::vector<std::map<std::string,symbol_table_data_type>>  symbol_table_;
+  std::vector<size_t>                                        current_new_var_idx_;
+  std::vector<size_t>                                        new_variable_index_;
 
-  size_t                                    char_no_;
-  size_t                                    curly_braces_;
-  size_t                                    current_new_var_idx_;
-  size_t                                    line_no_;
-  size_t                                    new_variable_index_;
-  size_t                                    tokens_parsed_;
+  size_t                                                     char_no_;
+  size_t                                                     curly_braces_;
+  size_t                                                     line_no_;
+  size_t                                                     tokens_parsed_;
 
-  lex_mode_type                             lex_mode_;
-  parse_mode_type                           parse_mode_;
+  lex_mode_type                                              lex_mode_;
+  parse_mode_type                                            parse_mode_;
 };
 
 
