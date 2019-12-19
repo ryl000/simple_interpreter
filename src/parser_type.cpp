@@ -44,10 +44,10 @@ namespace {
     ,{ 10, "not" }
     ,{ 10, "negate" }
    
-    ,{ 1, "(" }
-    ,{ 1, ")" }
+    ,{ 1,  "(" }
+    ,{ 1,  ")" }
 
-    ,{ 0, ";" }
+    ,{ 0,  ";" }
 
     ,{ 0,  "clear-stack" }
     ,{ 0,  "pop" }
@@ -57,28 +57,33 @@ namespace {
     ,{ 0,  "jmp" }
 
     ,{ 0,  "push-addr" }
+    ,{ 0,  "push-addr-stack" }
     ,{ 0,  "copytoaddr" }
+    ,{ 0,  "copytoaddr-stack" }
     ,{ 0,  "copyfromaddr" }
+    ,{ 0,  "copyfromaddr-stack" }
 
-    ,{ 8, "add" }
-    ,{ 8, "subtract" }
+    ,{ 0,  "move-end-of-stack" }
 
-    ,{ 9, "divide" }
-    ,{ 9, "mutliply" }
-   
-    ,{ 6, "eq" }
-    ,{ 6, "ne" }
-    ,{ 7, "ge" }
-    ,{ 7, "gt" }
-    ,{ 7, "le" }
-    ,{ 7, "lt" }
-   
-    ,{ 5, "and" }
-    ,{ 4, "or" }
-   
-    ,{ 2, "comma" }
+    ,{ 8,  "add" }
+    ,{ 8,  "subtract" }
 
-    ,{ 3, "assign" }
+    ,{ 9,  "divide" }
+    ,{ 9,  "mutliply" }
+   
+    ,{ 6,  "eq" }
+    ,{ 6,  "ne" }
+    ,{ 7,  "ge" }
+    ,{ 7,  "gt" }
+    ,{ 7,  "le" }
+    ,{ 7,  "lt" }
+   
+    ,{ 5,  "and" }
+    ,{ 4,  "or" }
+   
+    ,{ 2,  "comma" }
+
+    ,{ 3,  "assign" }
    
   };
 
@@ -260,11 +265,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  if ( statements_.empty() ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
-	  else if ( statements_.rbegin()->id != EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+	  else if ( statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMADDR ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  else {
-	    statements_.rbegin()->id = EVAL_ID_TYPE_OP_PUSHADDR;
+	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
 	  }
 	}
 
@@ -810,15 +815,23 @@ bool parser_type::parse_char( char c )
 	    //   pop current_new_var_idx_
 	    //   pop new_variable_index_
 	    //     
-	    current_new_var_idx_.push_back( 0U );
-	    new_variable_index_.push_back( 0U );
+	    current_new_var_idx_.push_back( current_new_var_idx_.back() );
+	    new_variable_index_.push_back( new_variable_index_.back() );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
 	      symbol_table_.pop_back();
 	      current_new_var_idx_.pop_back();
+	      size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
 	      new_variable_index_.pop_back();
+	      // If variables were defined in the most recent block, we need to 'pop'
+	      // them off the d-stack
+	      //
+	      if ( end_of_prev_block_new_variable_index > new_variable_index_.back() ) {
+		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+		statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
+	      }
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	      reprocess                  = true;
 	    }
@@ -844,8 +857,8 @@ bool parser_type::parse_char( char c )
 	    }
 	    
 	    // TODO. scoping
-	    auto iter = symbol_table_.rbegin()->find( last_token.text );
-	    if ( iter != symbol_table_.rbegin()->end() ) {
+	    auto iter = symbol_table_.back().find( last_token.text );
+	    if ( iter != symbol_table_.back().end() ) {
 	      std::cout << "ERROR: variable already defined\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	      break;
@@ -854,13 +867,16 @@ bool parser_type::parse_char( char c )
 	    // TODO. always add doubles on 8-byte boundary,
 	    // always add int32's on 4-byte boundary
 	    //
-	    *(current_new_var_idx_.rbegin()) = *(new_variable_index_.rbegin());
-	    *(new_variable_index_.rbegin()) += 8U; // size of double
+	    current_new_var_idx_.back() = new_variable_index_.back();
+	    new_variable_index_.back() += 8U; // size of double
+
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	    statements_.back().jump_arg = 8; // size of double
 
 	    symbol_table_data_type new_variable;
-	    new_variable.index  = *(current_new_var_idx_.rbegin());
+	    new_variable.index  = current_new_var_idx_.back();
 	    // TODO. more efficient insert, using find_lower_bound
-	    symbol_table_.rbegin()->insert( std::make_pair( last_token.text, new_variable ) );
+	    symbol_table_.back().insert( std::make_pair( last_token.text, new_variable ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
 	  }
 	  else {
@@ -888,7 +904,7 @@ bool parser_type::parse_char( char c )
 	    }
 	    else {
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
-	      statements_.back().addr_arg = *(current_new_var_idx_.rbegin());
+	      statements_.back().addr_arg = current_new_var_idx_.back();
 	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }
@@ -1120,6 +1136,11 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	      iter->id <= EVAL_ID_TYPE_OP_COPYFROMADDR ) {
       std::cout << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
+	"\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) {
+      std::cout << operator_data[ iter->id ].text <<
+	" " << iter->jump_arg <<
 	"\n";
     }
     else {

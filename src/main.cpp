@@ -95,7 +95,7 @@ int main( int argc, char* argv[] )
 
     print_statements( parser.statements() );
 
-    std::vector<char> data( parser.data_size() );
+    std::vector<char> data;
     if ( !evaluate( parser.statements(), data ) ) {
       std::cerr << "ERROR: evaluation error\n";
     }

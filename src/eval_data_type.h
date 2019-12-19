@@ -41,9 +41,14 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JCEQZ
   ,EVAL_ID_TYPE_OP_JMP
 
-  ,EVAL_ID_TYPE_OP_PUSHADDR      // TODO. need "absolute" and "stack-frame-relative" versions OR... absolute has a stack-frame base addr of 0?
-  ,EVAL_ID_TYPE_OP_COPYTOADDR    // TODO. need "absolute" and "stack-frame-relative" versions OR... absolute has a stack-frame base addr of 0?
-  ,EVAL_ID_TYPE_OP_COPYFROMADDR  // TODO. need "absolute" and "stack-frame-relative" versions OR... absolute has a stack-frame base addr of 0?
+  ,EVAL_ID_TYPE_OP_PUSHADDR
+  ,EVAL_ID_TYPE_OP_PUSHADDRS
+  ,EVAL_ID_TYPE_OP_COPYTOADDR
+  ,EVAL_ID_TYPE_OP_COPYTOADDRS
+  ,EVAL_ID_TYPE_OP_COPYFROMADDR
+  ,EVAL_ID_TYPE_OP_COPYFROMADDRS
+
+  ,EVAL_ID_TYPE_OP_MOVE_END_OF_STACK
 
   // NOTE: from this point down,
   //  it is assumed these enums match up

@@ -4,8 +4,12 @@ x = y = 7;
 
 y = x + 8;
 
-if ( y < 8 ) {
+if ( y > 8 ) {
   (1);
+  {
+    double x = 999;
+    double z = 15;
+  }
 }
 else {
   (0);

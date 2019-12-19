@@ -419,6 +419,13 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_MOVE_END_OF_STACK:
+      {
+	size_t new_size = data.size() + iter->jump_arg;
+	data.resize( new_size );
+      }
+      break;
+
     case EVAL_ID_TYPE_OP_LPARENS:
     case EVAL_ID_TYPE_OP_RPARENS:
     case EVAL_ID_TYPE_OP_FINALIZE:
