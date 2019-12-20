@@ -49,6 +49,7 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_COPYFROMADDRS
 
   ,EVAL_ID_TYPE_OP_MOVE_END_OF_STACK
+  ,EVAL_ID_TYPE_OP_SET_FRAME_BASE_TO_END_OF_STACK
 
   // NOTE: from this point down,
   //  it is assumed these enums match up

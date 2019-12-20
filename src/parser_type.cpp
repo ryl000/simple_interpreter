@@ -64,6 +64,7 @@ namespace {
     ,{ 0,  "copyfromaddr-stack" }
 
     ,{ 0,  "move-end-of-stack" }
+    ,{ 0,  "set-set-frame-base-to-end-of-stack" }
 
     ,{ 8,  "add" }
     ,{ 8,  "subtract" }
@@ -90,13 +91,13 @@ namespace {
 
   bool is_keyword( const std::string &name )
   {
-    if ( std::strcmp( "if", name.c_str() ) == 0 ) {
-      return true;
-    }
-    else if ( std::strcmp( "else", name.c_str() ) == 0 ) {
+    if ( std::strcmp( "else", name.c_str() ) == 0 ) {
       return true;
     }
     else if ( std::strcmp( "fn", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "if", name.c_str() ) == 0 ) {
       return true;
     }
     else if ( std::strcmp( "while", name.c_str() ) == 0 ) {
@@ -771,7 +772,7 @@ bool parser_type::parse_char( char c )
 
       do {
 	reprocess = false;
-	
+
 	switch ( grammar_state_.back().mode ) {
 	case GRAMMAR_MODE_STATEMENT_START:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
@@ -798,13 +799,16 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
 	    }
 	    else if ( std::strcmp( "fn", last_token.text.c_str() ) == 0 ) {
-	      // TODO. add a jump, that will be fixed at end-of-function to jump
+	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_START;
+	      
+	      // add a jump, that will be fixed at end-of-function to jump
 	      // past function contents
 	      //
-	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_START;
+	      size_t new_jmp_idx = statements_.size();
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
 	    // TODO. add int?
-	    // TODO. add function?
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
 	      reprocess                  = true;
@@ -1002,29 +1006,55 @@ bool parser_type::parse_char( char c )
 	      //
 	      while ( grammar_state_.size() > 1
 		      &&
-		      ((grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_BRANCH_CLAUSE)
+		      (
+		        ( (grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_BRANCH_CLAUSE)
+		        ||
+		        ( (grammar_state_.rbegin() + 1U)->mode == GRAMMAR_MODE_DEFINE_FUNCTION_BODY)
+		      )
 		      &&
 		      ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
+
+		std::cout << "unwinding\n";
+		std::cout << (grammar_state_.rbegin() + 1U)->mode << "\n";
+		
 		grammar_state_.pop_back();
 
-		if ( (grammar_state_.rbegin())->branching_mode == BRANCHING_MODE_WHILE ) {
-		  // Put an unconditional jmp at the end of the previous while clause,
-		  // to go back to conditional check
-		  size_t new_jmp_idx = statements_.size();
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
-		  statements_.back().jump_arg = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
-		  grammar_state_.rbegin()->loopback_offset = 0U;
-		}
+		if ( (grammar_state_.rbegin())->mode == GRAMMAR_MODE_DEFINE_FUNCTION_BODY ) {
+		  // TODO.
+		  //  add function return code
+		  //    pop stack past args
+		  //    pop top-of-stack into stack frame base
+		  //    pop top-of-stack and jump to the returned value
+		  //
 
-		if ( (grammar_state_.rbegin())->branching_mode != BRANCHING_MODE_IF ) {
-		  // TODO. check return value?
+		  //  Fix-up the jump that was placed before the function
+		  //    definition, so we jump past the function definition
+		  //
 		  anchor_jump_here_( grammar_state_.back().jump_offset );
 		  grammar_state_.back().jump_offset = 0U;
+		  std::cout << "updated jump over function\n";
 		}
 		else {
-		  grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
-		  mode_set = true;
-		  break;
+
+		  if ( (grammar_state_.rbegin())->branching_mode == BRANCHING_MODE_WHILE ) {
+		    // Put an unconditional jmp at the end of the previous while clause,
+		    // to go back to conditional check
+		    size_t new_jmp_idx = statements_.size();
+		    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+		    statements_.back().jump_arg = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
+		    grammar_state_.rbegin()->loopback_offset = 0U;
+		  }
+
+		  if ( (grammar_state_.rbegin())->branching_mode != BRANCHING_MODE_IF ) {
+		    // TODO. check return value?
+		    anchor_jump_here_( grammar_state_.back().jump_offset );
+		    grammar_state_.back().jump_offset = 0U;
+		  }
+		  else {
+		    grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
+		    mode_set = true;
+		    break;
+		  }
 		}
 		
 	      }
@@ -1033,6 +1063,7 @@ bool parser_type::parse_char( char c )
 	    
 	    if ( !mode_set ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
+	      std::cout << "mode set to statement start\n";
 	    }
 	  }
 	  break;
@@ -1100,6 +1131,9 @@ bool parser_type::parse_char( char c )
 	  {
 	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	      // TODO. need to do symbol table lookup
+	      //  then need to add to symbol table, so it can subsequently
+	      //  be found
+	      //
 	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS;
 	    }
 	    else {
@@ -1144,7 +1178,9 @@ bool parser_type::parse_char( char c )
 	  {
 	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
 	      // TODO. make sure not keyword, and not already used
-	      //  by a previously-defined arg name
+	      //  by a previously-defined arg name.
+	      //  then save this to the new function's "symbol table"
+	      //  we are building
 	      //
 	      grammar_state_.back().mode = GRAMMAR_MODE_FUNCTION_ARG_END;
 	    }
@@ -1170,6 +1206,21 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
 	    grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+	    // TODO. is there a better way to do this? We need to "pre-increment" curly_braces here,
+	    //  because the "internal" statement parser didn't see the leading curly-braces...
+	    // TRICKY. there's some logic tied to the opening curly brace, which needs
+	    //  to be adjusted for function start (vs block start)!
+	    //
+	    ++curly_braces_;
+
+	    // TODO. add a new symbol table level, containing the arguments parsed from the
+	    //  function argument list
+	    //
+
+	    // add instructions for function prelude
+	    //  set stack frame base to current stack offset
+	    //
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_SET_FRAME_BASE_TO_END_OF_STACK ) );
 	  }
 	  else {
 	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
