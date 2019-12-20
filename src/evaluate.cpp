@@ -61,33 +61,40 @@ namespace {
 
 
 bool evaluate(
-	      const std::vector<eval_data_type> &expression
+	      const std::vector<eval_data_type> &instructions
 	      ,std::vector<char>                 &data
 	      )
 {
   std::vector<operand_data_type> evaluation_stack;
+  size_t                         stack_frame_base = 0U;
 
   // TODO. make this int16_t for 32-bit?
   //
   int32_t  iter_increment           = 1;
 
 
-  for ( std::vector<eval_data_type>::const_iterator iter = expression.begin()
-	  ; iter != expression.end()
+  for ( std::vector<eval_data_type>::const_iterator iter = instructions.begin()
+	  ; iter != instructions.end()
 	  ; iter += iter_increment ) {
 
     iter_increment = 1;
     
     switch ( iter->id ) {
     case EVAL_ID_TYPE_PUSHD:
+      // PUSH-DOUBLE <dval>
+      //  0, -0, +1
       evaluation_stack.push_back( operand_data_type( iter->value ) );
       break;
 
     case EVAL_ID_TYPE_OP_PUSHADDR:
+      // PUSH-OFFSET <offset>
+      //  0, -0, +1
       evaluation_stack.push_back( operand_data_type( iter->addr_arg ) );
       break;
 
     case EVAL_ID_TYPE_OP_NOT:
+      // OP-NOT
+      //  1, -1, +1 
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -100,6 +107,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_NEGATE:
+      // OP-NEGATE
+      //  1, -1, +1
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -112,6 +121,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_ADD:
+      // OP-ADD
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -127,6 +138,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_SUBTRACT:
+      // OP-SUB
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -143,6 +156,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_DIVIDE:
+      // OP-DIV
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -162,6 +177,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_MULTIPLY:
+      // OP-MULT
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -177,6 +194,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_EQ:
+      // OP-EQ
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -192,6 +211,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_NEQ:
+      // OP-NEQ
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -207,6 +228,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_GE:
+      // OP-GE
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -222,6 +245,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_GT:
+      // OP-GT
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -237,6 +262,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_LE:
+      // OP-LE
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -252,6 +279,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_LT:
+      // OP-LT
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -267,6 +296,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_AND:
+      // OP-AND
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -286,6 +317,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_OR:
+      // OP-OR
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -305,6 +338,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_ASSIGN:
+      // OP-ASSIGN
+      //  2, -2, +1
       {
 	if ( evaluation_stack.size() < 2 ) {
 	  return false;
@@ -312,10 +347,10 @@ bool evaluate(
 
 	size_t dst_idx = (evaluation_stack.rbegin() + 1U)->addr;
 
-	double new_value = (evaluation_stack.rbegin())->value;
+	double new_value = (evaluation_stack.rbegin())->value; // TODO. varible type
 
 	char *src = reinterpret_cast<char*>( &new_value );
-	std::copy( src, src+8U, &(data[dst_idx]) );
+	std::copy( src, src+8U, &(data[dst_idx + stack_frame_base]) );
 
 	evaluation_stack.pop_back();
 	evaluation_stack.back().value = new_value;
@@ -323,6 +358,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_CLEAR:
+      // OP-CLEAR
+      //  clears estack
       {
 	if ( !evaluation_stack.empty() ) {
 	  double value = (evaluation_stack.rbegin())->value;
@@ -336,6 +373,8 @@ bool evaluate(
       break;
       
     case EVAL_ID_TYPE_OP_POP:
+      // OP-POP <narg>
+      //  narg, -narg, +0
       {
 	if ( evaluation_stack.size() < iter->pop_arg ) {
 	  return false;
@@ -348,6 +387,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_JNEZ:
+      // OP-JNEZ <offset>
+      //  1, -0, +0
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -362,6 +403,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_JEQZ:
+      // OP-JEQZ <offset>
+      //  1, -0, +0
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -375,6 +418,8 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_JCEQZ:
+      // OP-JCEQZ <offset>
+      //  1, -1, +0
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -390,23 +435,29 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_JMP:
+      // OP-JMP <offset>
+      //  0, -0, +0
       {
 	iter_increment = iter->jump_arg;
       }
       break;
 
     case EVAL_ID_TYPE_OP_COPYFROMADDR:
+      // OP-COPY-FROM-OFFSET <offset>
+      //  0, -0, +1
       {
 	double new_value;
-	char *src = &(data[iter->addr_arg]);
+	char *src = &(data[iter->addr_arg + stack_frame_base]);
 	char *dst = reinterpret_cast<char*>( &new_value );
-	std::copy( src, src+8U, dst );
+	std::copy( src, src+8U, dst ); // TODO. variable-size copy
 
 	evaluation_stack.emplace_back( operand_data_type( new_value ) );
       }
       break;
 
     case EVAL_ID_TYPE_OP_COPYTOADDR:
+      // OP-COPY-TO-OFFSET <offset>
+      //  1, -0, +0
       {
 	if ( evaluation_stack.empty() ) {
 	  return false;
@@ -415,11 +466,13 @@ bool evaluate(
 	double value = (evaluation_stack.rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &value );
-	std::copy( src, src+8U, &(data[iter->addr_arg]) );
+	std::copy( src, src+8U, &(data[iter->addr_arg + stack_frame_base]) ); // TODO. variable-size copy
       }
       break;
 
     case EVAL_ID_TYPE_OP_MOVE_END_OF_STACK:
+      // OP-MOVE-END-OF-STACK
+      //  0, -0, +0
       {
 	size_t new_size = data.size() + iter->jump_arg;
 	data.resize( new_size );

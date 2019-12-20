@@ -30,6 +30,6 @@
 
 
 bool evaluate(
-	      const std::vector<eval_data_type> &expression
+	      const std::vector<eval_data_type> &instructions
 	      ,std::vector<char>                 &data
 	      );

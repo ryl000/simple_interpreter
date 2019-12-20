@@ -93,10 +93,16 @@ namespace {
     if ( std::strcmp( "if", name.c_str() ) == 0 ) {
       return true;
     }
-    else if ( std::strcmp( "double", name.c_str() ) == 0 ) {
+    else if ( std::strcmp( "else", name.c_str() ) == 0 ) {
       return true;
     }
-    else if ( std::strcmp( "else", name.c_str() ) == 0 ) {
+    else if ( std::strcmp( "fn", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "while", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "double", name.c_str() ) == 0 ) {
       return true;
     }
 
@@ -226,9 +232,6 @@ bool parser_type::statement_parser_( const token_type &last_token )
       update_stacks_with_operator_( EVAL_ID_TYPE_OP_LPARENS );
       // stay in this parse mode
     }
-    // TODO. allow RPARENS here? Tricky...
-    //  need to allow for (), but not (-)
-    //  Perhaps only allow for this in a function context?
     else {
       parse_mode_ = PARSE_MODE_ERROR;
     }
@@ -781,8 +784,24 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().branching_mode = BRANCHING_MODE_WHILE;
 	      grammar_state_.back().loopback_offset = statements_.size();
 	    }
+	    // TODO. instead of allowing
+	    //  double x;
+	    //  int y;
+	    // do this instead?
+	    //  var double x;
+	    //  var int y;
+	    // to be consistent with
+	    //  fn double x() {}
+	    //  fn int y() {}
+	    //
 	    else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
+	    }
+	    else if ( std::strcmp( "fn", last_token.text.c_str() ) == 0 ) {
+	      // TODO. add a jump, that will be fixed at end-of-function to jump
+	      // past function contents
+	      //
+	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_START;
 	    }
 	    // TODO. add int?
 	    // TODO. add function?
@@ -979,6 +998,7 @@ bool parser_type::parse_char( char c )
 	    if ( (grammar_state_.size() > 1) ) {
 
 	      // "unwind" if/else as applicable
+	      // TODO. add function body end!
 	      //
 	      while ( grammar_state_.size() > 1
 		      &&
@@ -1058,7 +1078,104 @@ bool parser_type::parse_char( char c )
 	case GRAMMAR_MODE_BRANCH_CLAUSE:
 	  // TODO. do we need this as an enum?
 	  break;
+
+	case GRAMMAR_MODE_DEFINE_FUNCTION_START:
+	  {
+	    bool fn_type_found = false;
+
+	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	      if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+		grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_NAME;
+		fn_type_found = true;
+	      }
+	    }
+
+	    if ( !fn_type_found ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	  }
+	  break;
 	  
+	case GRAMMAR_MODE_EXPECT_FUNCTION_NAME:
+	  {
+	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	      // TODO. need to do symbol table lookup
+	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS;
+	    }
+	    else {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	  }
+	  break;
+
+	case GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS:
+	  {
+	    if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_ARG_TYPE;
+	    }
+	    else {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	  }
+	  break;
+
+	case GRAMMAR_MODE_EXPECT_FUNCTION_ARG_TYPE:
+	  {
+	    if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_BODY_START;
+	    }
+	    else {
+	      bool arg_type_found = false;
+	      if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+		if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+		  grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_ARG_NAME;
+		  arg_type_found = true;
+		}
+	      }
+
+	      if ( !arg_type_found ) {
+		grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	      }
+	    }
+	  }
+	  break;
+
+	case GRAMMAR_MODE_EXPECT_FUNCTION_ARG_NAME:
+	  {
+	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	      // TODO. make sure not keyword, and not already used
+	      //  by a previously-defined arg name
+	      //
+	      grammar_state_.back().mode = GRAMMAR_MODE_FUNCTION_ARG_END;
+	    }
+	    else {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	  }
+	  break;
+
+	case GRAMMAR_MODE_FUNCTION_ARG_END:
+	  if ( last_token.id == TOKEN_ID_TYPE_COMMA ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_ARG_TYPE;
+	  }
+	  else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_BODY_START;
+	  }
+	  else {
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	  }
+	  break;
+
+	case GRAMMAR_MODE_EXPECT_FUNCTION_BODY_START:
+	  if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
+	    grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
+	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+	  }
+	  else {
+	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	  }
+	  break;
+
 	case GRAMMAR_MODE_END_OF_INPUT:
 	case GRAMMAR_MODE_ERROR:
 	  // Do nothing
