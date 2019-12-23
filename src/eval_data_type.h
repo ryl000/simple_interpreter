@@ -40,6 +40,7 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JEQZ
   ,EVAL_ID_TYPE_OP_JCEQZ
   ,EVAL_ID_TYPE_OP_JMP
+  ,EVAL_ID_TYPE_OP_JMPA
 
   ,EVAL_ID_TYPE_OP_PUSHADDR
   ,EVAL_ID_TYPE_OP_PUSHADDRS
@@ -50,6 +51,8 @@ enum eval_id_type {
 
   ,EVAL_ID_TYPE_OP_MOVE_END_OF_STACK
   ,EVAL_ID_TYPE_OP_SET_FRAME_BASE_TO_END_OF_STACK
+  ,EVAL_ID_TYPE_OP_CALL
+  ,EVAL_ID_TYPE_OP_RETURN
 
   // NOTE: from this point down,
   //  it is assumed these enums match up

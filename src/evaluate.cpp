@@ -65,6 +65,9 @@ bool evaluate(
 	      ,std::vector<char>                 &data
 	      )
 {
+  // TODO. the evaluation stack needs to be multi-layered, to support
+  //  function calls that occur in the "middle" of an evaluation
+  //
   std::vector<operand_data_type> evaluation_stack;
   size_t                         stack_frame_base = 0U;
 
@@ -73,9 +76,13 @@ bool evaluate(
   int32_t  iter_increment           = 1;
 
 
-  for ( std::vector<eval_data_type>::const_iterator iter = instructions.begin()
-	  ; iter != instructions.end()
-	  ; iter += iter_increment ) {
+  size_t instr_index = 0U;
+  while ( instr_index < instructions.size() ) {
+
+    bool    jump_absolute  = false;
+    int32_t iter_increment = 1;
+
+    std::vector<eval_data_type>::const_iterator iter = instructions.begin() + instr_index;
 
     iter_increment = 1;
     
@@ -442,6 +449,15 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_JMPA:
+      // OP-JMPA <addr>
+      //  0, -0, +0
+      {
+	instr_index   = iter->jump_arg; // TODO. type mismatch!
+	jump_absolute = true;
+      }
+      break;
+
     case EVAL_ID_TYPE_OP_COPYFROMADDR:
       // OP-COPY-FROM-OFFSET <offset>
       //  0, -0, +1
@@ -479,12 +495,50 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_CALL:
+      {
+	// push address of next instruction onto stack
+	data.resize( data.size() + 8U );
+	*(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) = instr_index + 1U;
+	
+	// push current stack frame base onto stack
+	data.resize( data.size() + 8U );
+	*(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) = stack_frame_base;
+
+	// reset stack frame base to end-of-stack, in preparation for
+	// function execution
+	//
+	stack_frame_base = data.size();
+
+	// jump to function start
+	//
+	instr_index   = iter->jump_arg;
+	jump_absolute = true;
+      }
+      break;
+      
+    case EVAL_ID_TYPE_OP_RETURN:
+      {
+	size_t old_stack_frame_base = *(reinterpret_cast<size_t*>(&(data[stack_frame_base -  8])));
+	size_t return_address       = *(reinterpret_cast<size_t*>(&(data[stack_frame_base - 16])));
+	data.resize( stack_frame_base - 16 );
+
+	stack_frame_base = old_stack_frame_base;
+	instr_index      = return_address;
+	jump_absolute    = true;
+      }
+      break;
+
     case EVAL_ID_TYPE_OP_LPARENS:
     case EVAL_ID_TYPE_OP_RPARENS:
     case EVAL_ID_TYPE_OP_FINALIZE:
     case EVAL_ID_TYPE_OP_COMMA:
       // NOTE. These should never occur...
       break;
+    }
+
+    if ( !jump_absolute ) {
+      instr_index += iter_increment;
     }
   }
 

@@ -26,6 +26,45 @@
 #include "parser_type.h"
 
 
+// Function call interface
+//
+// Right before jump-to-function:
+//      ...
+//      space reserved for return value(s), if any
+//      argument(s), if any
+// sp->
+//
+// The call will:
+//    push the addr of the next instruction onto the stack
+//    push the current stack frame base onto the stack
+//    set the stack frame base to the current stack pointer
+//
+// So, inside the function:
+//      ...
+//      space reserved for return value(s), if any
+//      argument(s), if any
+//      return address
+//      old stack frame addr
+// sp->
+//
+// When the function does a return, it will:
+//   set the sp-> to the stack frame addr
+//   pop the old stack frame addr off the stack and
+//    use that to set the stack frame addr
+//   pop the return address off and jump to that address
+//
+// So upon return to the original caller:
+//      ...
+//      return value(s), if any
+//      argument(s), if any
+// sp->
+//
+// At this point, the caller will do any stack cleanup
+// required (popping arguments off the stack, then handling
+// what to do with return value(s))
+//
+
+
 namespace {
 
   
@@ -55,6 +94,7 @@ namespace {
     ,{ 0,  "jeqz" }
     ,{ 0,  "jceqz" }
     ,{ 0,  "jmp" }
+    ,{ 0,  "jmp-absolute" }
 
     ,{ 0,  "push-addr" }
     ,{ 0,  "push-addr-stack" }
@@ -65,6 +105,8 @@ namespace {
 
     ,{ 0,  "move-end-of-stack" }
     ,{ 0,  "set-set-frame-base-to-end-of-stack" }
+    ,{ 0,  "call" }
+    ,{ 0,  "return" }
 
     ,{ 8,  "add" }
     ,{ 8,  "subtract" }
@@ -123,6 +165,7 @@ bool parser_type::anchor_jump_here_( size_t jump_idx )
 }
 
 
+// TODO. need to add symbol_table_ as a parameter?
 bool parser_type::statement_parser_( const token_type &last_token )
 {
   switch ( parse_mode_ ) {
@@ -815,6 +858,7 @@ bool parser_type::parse_char( char c )
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
+	    // NOTE: This is a block start
 	    ++curly_braces_;
 	    symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
 	    // TODO. the following two are related to stack frame, not curly brace level!
@@ -1014,25 +1058,20 @@ bool parser_type::parse_char( char c )
 		      &&
 		      ((grammar_state_.rbegin() )->block_depth == curly_braces_) ) {
 
-		std::cout << "unwinding\n";
-		std::cout << (grammar_state_.rbegin() + 1U)->mode << "\n";
-		
 		grammar_state_.pop_back();
 
 		if ( (grammar_state_.rbegin())->mode == GRAMMAR_MODE_DEFINE_FUNCTION_BODY ) {
 		  // TODO.
-		  //  add function return code
-		  //    pop stack past args
-		  //    pop top-of-stack into stack frame base
-		  //    pop top-of-stack and jump to the returned value
+		  //   This should put the contents of (old-stack-frame-base - 8) into the stack frame base,
+		  //   then jump to (old-stack-frame-base - 16)
 		  //
-
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
+		  
 		  //  Fix-up the jump that was placed before the function
 		  //    definition, so we jump past the function definition
 		  //
 		  anchor_jump_here_( grammar_state_.back().jump_offset );
 		  grammar_state_.back().jump_offset = 0U;
-		  std::cout << "updated jump over function\n";
 		}
 		else {
 
@@ -1063,7 +1102,6 @@ bool parser_type::parse_char( char c )
 	    
 	    if ( !mode_set ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
-	      std::cout << "mode set to statement start\n";
 	    }
 	  }
 	  break;
@@ -1206,19 +1244,31 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
 	    grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
-	    // TODO. is there a better way to do this? We need to "pre-increment" curly_braces here,
-	    //  because the "internal" statement parser didn't see the leading curly-braces...
+
+	    ++curly_braces_;
+	    
 	    // TRICKY. there's some logic tied to the opening curly brace, which needs
 	    //  to be adjusted for function start (vs block start)!
 	    //
-	    ++curly_braces_;
 
 	    // TODO. add a new symbol table level, containing the arguments parsed from the
 	    //  function argument list
 	    //
 
-	    // add instructions for function prelude
-	    //  set stack frame base to current stack offset
+	    // TODO.
+	    //  add instructions for function prelude
+	    //    push current stack frame base onto stack
+	    //    set stack frame base to current stack pointer
+	    //
+	    //  So the stack will look like this at function entry
+	    //  (bottom to top):
+	    //  
+	    //    (space for return value(s))
+	    //    # of return values
+	    //    (args)
+	    //    # of args
+	    //    return address
+	    //    old stack frame base
 	    //
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_SET_FRAME_BASE_TO_END_OF_STACK ) );
 	  }
