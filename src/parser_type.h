@@ -51,9 +51,7 @@ class parser_type {
   {
     grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
     current_new_var_idx_[0] = 0U;
-    std::cout << "debug: current_new_var_idx_ size is " << current_new_var_idx_.size() << "\n";
     new_variable_index_[0] = 0U;
-    std::cout << "debug: new_variable_index_ size is " << new_variable_index_.size() << "\n";
   }
 
   bool parse_char( char c );

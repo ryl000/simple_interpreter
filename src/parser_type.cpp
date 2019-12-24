@@ -202,8 +202,6 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	      statements_.back().jump_arg = 8; // size of double
 	      // TODO. push function onto stack
 	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
-	      std::cout << "found symbol " << iter->first << "\n";
-	      std::cout << " at index " << iter->second.index << "\n";
 	      new_fn.addr_arg = iter->second.index;
 	      update_stacks_with_operator_( new_fn );
 	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
@@ -486,7 +484,6 @@ bool parser_type::update_stacks_with_operator_(
       if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_FN ) {
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
 	statements_.back().addr_arg = operator_stack_.back().addr_arg;
-	std::cout << "setting call arg to " << statements_.back().addr_arg << "\n";
       }
       else {
 	statements_.emplace_back( operator_stack_.back() );
@@ -895,7 +892,6 @@ bool parser_type::parse_char( char c )
 	      //
 	      size_t new_jmp_idx = statements_.size();
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
-	      std::cout << "statements_ size is now " << statements_.size() << "\n";
 	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
 	    // TODO. add int?
@@ -930,7 +926,6 @@ bool parser_type::parse_char( char c )
 	    //   pop new_variable_index_
 	    //
 	    if ( !current_new_var_idx_.empty() ) {
-	      std::cout << "debug: size is " << current_new_var_idx_.size() << "\n";
 	      size_t prev = current_new_var_idx_[0];
 	      current_new_var_idx_.push_back( prev );
 	    }
@@ -943,12 +938,11 @@ bool parser_type::parse_char( char c )
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
 	      symbol_table_.pop_back();
-	      std::cout << "debug(X): current_new_var_idx_ size is " << current_new_var_idx_.size() << "\n";
-#if 0
 	      current_new_var_idx_.pop_back();
 	      if ( !new_variable_index_.empty() ) {
 		size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
 		new_variable_index_.pop_back();
+#if 0
 		// If variables were defined in the most recent block, we need to 'pop'
 		// them off the d-stack
 		//
@@ -956,8 +950,8 @@ bool parser_type::parse_char( char c )
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
 		  statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
 		}
-	      }
 #endif
+	      }
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	      reprocess                  = true;
 	    }
@@ -1245,7 +1239,6 @@ bool parser_type::parse_char( char c )
 	      symbol_table_data_type new_function;
 	      new_function.index  = statements_.size();
 	      new_function.type   = SYMBOL_TYPE_FUNCTION;
-	      std::cout << "fn index is " << new_function.index << "\n";
 	      // TODO. more efficient insert, using find_lower_bound
 	      symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
 
@@ -1328,6 +1321,9 @@ bool parser_type::parse_char( char c )
 	    //  function args
 	    //
 	    symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
+
+	    new_variable_index_.push_back( 0U );
+	    current_new_var_idx_.push_back( 0U );
 	    
 	    // TRICKY. there's some logic tied to the opening curly brace, which needs
 	    //  to be adjusted for function start (vs block start)!
