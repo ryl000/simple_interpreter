@@ -108,6 +108,8 @@ namespace {
     ,{ 0,  "call" }
     ,{ 0,  "return" }
 
+    ,{ 9,  "fn" }
+    
     ,{ 8,  "add" }
     ,{ 8,  "subtract" }
 
@@ -140,6 +142,9 @@ namespace {
       return true;
     }
     else if ( std::strcmp( "if", name.c_str() ) == 0 ) {
+      return true;
+    }
+    else if ( std::strcmp( "return", name.c_str() ) == 0 ) {
       return true;
     }
     else if ( std::strcmp( "while", name.c_str() ) == 0 ) {
@@ -185,14 +190,29 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	    // or an absolute offset. Or maybe "absolute" is stack-frame-relative as well,
 	    // just with a stack frame base addr of 0?
 	    //
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	    statements_.back().addr_arg = iter->second.index;
-	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	    if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+	      statements_.back().addr_arg = iter->second.index;
+	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	    }
+	    else {
+	      // reserve space on dstack for return value
+	      // TODO. allow for void returns
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	      statements_.back().jump_arg = 8; // size of double
+	      // TODO. push function onto stack
+	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
+	      std::cout << "found symbol " << iter->first << "\n";
+	      std::cout << " at index " << iter->second.index << "\n";
+	      new_fn.addr_arg = iter->second.index;
+	      update_stacks_with_operator_( new_fn );
+	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
+	    }
 	  }
 	}
 
 	if ( !symbol_found ) {
-	  std::cout << "ERROR(A): variable " << last_token.text << " cannot be found\n";
+	  std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
       }
@@ -204,10 +224,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
 		last_token.id == TOKEN_ID_TYPE_MINUS ||
 		last_token.id == TOKEN_ID_TYPE_NOT ) {
 	if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	  update_stacks_with_operator_( EVAL_ID_TYPE_OP_NEGATE );
+	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  update_stacks_with_operator_( EVAL_ID_TYPE_OP_NOT );
+	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
 	}
 	else {
 	  // Nothing needs to be done for unary +
@@ -215,7 +235,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
       else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	update_stacks_with_operator_( EVAL_ID_TYPE_OP_LPARENS );
+	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
       else {
@@ -262,10 +282,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	      last_token.id == TOKEN_ID_TYPE_MINUS ||
 	      last_token.id == TOKEN_ID_TYPE_NOT ) {
       if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	update_stacks_with_operator_( EVAL_ID_TYPE_OP_NEGATE );
+	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
       }
       else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	update_stacks_with_operator_( EVAL_ID_TYPE_OP_NOT );
+	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
       }
       else {
 	// Nothing needs to be done for unary +
@@ -273,7 +293,14 @@ bool parser_type::statement_parser_( const token_type &last_token )
       // stay in this parse mode
     }
     else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-      update_stacks_with_operator_( EVAL_ID_TYPE_OP_LPARENS );
+      update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
+      // stay in this parse mode
+    }
+    else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+      // TODO. restrict this to function mode only!
+      if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
+	parse_mode_ = PARSE_MODE_ERROR;
+      }
       // stay in this parse mode
     }
     else {
@@ -321,7 +348,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	}
 
 	if ( parse_mode_ != PARSE_MODE_ERROR ) {
-	  if ( !update_stacks_with_operator_( new_eval_id_type ) ) {
+	  if ( !update_stacks_with_operator_( eval_data_type( new_eval_id_type ) ) ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  else {
@@ -331,7 +358,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
       }
     }
     else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-      if ( !update_stacks_with_operator_( EVAL_ID_TYPE_OP_RPARENS ) ) {
+      if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
     }
@@ -343,9 +370,19 @@ bool parser_type::statement_parser_( const token_type &last_token )
     
   case PARSE_MODE_VARIABLE_DEFINITION_START:
     if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-      if ( !update_stacks_with_operator_( EVAL_ID_TYPE_OP_ASSIGN ) ) {
+      if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_ASSIGN ) ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
+      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+    }
+    else {
+      parse_mode_ = PARSE_MODE_ERROR;
+    }
+    break;
+
+  case PARSE_MODE_FN_LPARENS_EXPECTED:
+    if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+      update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
       parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
     }
     else {
@@ -366,7 +403,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
 bool parser_type::statement_parser_finalize_()
 {
-  if ( !update_stacks_with_operator_( EVAL_ID_TYPE_OP_FINALIZE ) ) {
+  if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_FINALIZE ) ) ) {
     return false;
   }
   parse_mode_ = PARSE_MODE_START;
@@ -391,9 +428,11 @@ bool parser_type::token_id_to_eval_id_(
 
 
 bool parser_type::update_stacks_with_operator_(
-					       eval_id_type                       eval_id
+					       eval_data_type                       eval_data
 					       )
 {
+  eval_id_type eval_id = eval_data.id;
+  
   if ( eval_id == EVAL_ID_TYPE_OP_LPARENS ) {
       
     lparens_.push_back( operator_stack_.size() );
@@ -443,8 +482,15 @@ bool parser_type::update_stacks_with_operator_(
 	  break;
 	}
       }
-	
-      statements_.emplace_back( operator_stack_.back() );
+
+      if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_FN ) {
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
+	statements_.back().addr_arg = operator_stack_.back().addr_arg;
+	std::cout << "setting call arg to " << statements_.back().addr_arg << "\n";
+      }
+      else {
+	statements_.emplace_back( operator_stack_.back() );
+      }
 
       // If && or || is pushed into the statements stack, we need to resolve any previously-pushed
       // JNEZ/JEQZ with the correct jump arg
@@ -473,7 +519,7 @@ bool parser_type::update_stacks_with_operator_(
     //
     else if ( eval_id != EVAL_ID_TYPE_OP_COMMA && eval_id != EVAL_ID_TYPE_OP_FINALIZE ) {
 	
-      operator_stack_.emplace_back( eval_data_type( eval_id ) );
+      operator_stack_.emplace_back( eval_data );
 
       // If && or ||, we need to add a JEQZ/JNEZ into the statements, to handle short-circuits
       // NOTE that we are using the "jump arg" field in the && or || to
@@ -849,6 +895,7 @@ bool parser_type::parse_char( char c )
 	      //
 	      size_t new_jmp_idx = statements_.size();
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+	      std::cout << "statements_ size is now " << statements_.size() << "\n";
 	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
 	    // TODO. add int?
@@ -881,24 +928,36 @@ bool parser_type::parse_char( char c )
 	    //   pop symboL_table_
 	    //   pop current_new_var_idx_
 	    //   pop new_variable_index_
-	    //     
-	    current_new_var_idx_.push_back( current_new_var_idx_.back() );
-	    new_variable_index_.push_back( new_variable_index_.back() );
+	    //
+	    if ( !current_new_var_idx_.empty() ) {
+	      std::cout << "debug: size is " << current_new_var_idx_.size() << "\n";
+	      size_t prev = current_new_var_idx_[0];
+	      current_new_var_idx_.push_back( prev );
+	    }
+	    if ( !new_variable_index_.empty() ) {
+	      size_t prev = new_variable_index_[0];
+	      new_variable_index_.push_back( prev );
+	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
 	    if ( curly_braces_ ) {
 	      --curly_braces_;
 	      symbol_table_.pop_back();
+	      std::cout << "debug(X): current_new_var_idx_ size is " << current_new_var_idx_.size() << "\n";
+#if 0
 	      current_new_var_idx_.pop_back();
-	      size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
-	      new_variable_index_.pop_back();
-	      // If variables were defined in the most recent block, we need to 'pop'
-	      // them off the d-stack
-	      //
-	      if ( end_of_prev_block_new_variable_index > new_variable_index_.back() ) {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-		statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
+	      if ( !new_variable_index_.empty() ) {
+		size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
+		new_variable_index_.pop_back();
+		// If variables were defined in the most recent block, we need to 'pop'
+		// them off the d-stack
+		//
+		if ( end_of_prev_block_new_variable_index > new_variable_index_.back() ) {
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+		  statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
+		}
 	      }
+#endif
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	      reprocess                  = true;
 	    }
@@ -926,7 +985,7 @@ bool parser_type::parse_char( char c )
 	    // TODO. scoping
 	    auto iter = symbol_table_.back().find( last_token.text );
 	    if ( iter != symbol_table_.back().end() ) {
-	      std::cout << "ERROR: variable already defined\n";
+	      std::cout << "ERROR: symbol already defined\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	      break;
 	    }
@@ -942,6 +1001,7 @@ bool parser_type::parse_char( char c )
 
 	    symbol_table_data_type new_variable;
 	    new_variable.index  = current_new_var_idx_.back();
+	    new_variable.type   = SYMBOL_TYPE_VARIABLE;
 	    // TODO. more efficient insert, using find_lower_bound
 	    symbol_table_.back().insert( std::make_pair( last_token.text, new_variable ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
@@ -1168,10 +1228,27 @@ bool parser_type::parse_char( char c )
 	case GRAMMAR_MODE_EXPECT_FUNCTION_NAME:
 	  {
 	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	      // TODO. need to do symbol table lookup
-	      //  then need to add to symbol table, so it can subsequently
-	      //  be found
-	      //
+
+	      if ( is_keyword( last_token.text ) ) {
+		std::cout << "ERROR: keyword found\n";
+		grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+		break;
+	      }
+
+	      auto iter = symbol_table_.back().find( last_token.text );
+	      if ( iter != symbol_table_.back().end() ) {
+		std::cout << "ERROR: symbol already defined\n";
+		grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+		break;
+	      }
+
+	      symbol_table_data_type new_function;
+	      new_function.index  = statements_.size();
+	      new_function.type   = SYMBOL_TYPE_FUNCTION;
+	      std::cout << "fn index is " << new_function.index << "\n";
+	      // TODO. more efficient insert, using find_lower_bound
+	      symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
+
 	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS;
 	    }
 	    else {
@@ -1246,6 +1323,11 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 
 	    ++curly_braces_;
+	    // TODO. this symbol table should have:
+	    //  globals
+	    //  function args
+	    //
+	    symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
 	    
 	    // TRICKY. there's some logic tied to the opening curly brace, which needs
 	    //  to be adjusted for function start (vs block start)!
@@ -1270,7 +1352,6 @@ bool parser_type::parse_char( char c )
 	    //    return address
 	    //    old stack frame base
 	    //
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_SET_FRAME_BASE_TO_END_OF_STACK ) );
 	  }
 	  else {
 	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
@@ -1366,4 +1447,3 @@ void print_statements( const std::vector<eval_data_type> &statement )
     }
   }
 }
-

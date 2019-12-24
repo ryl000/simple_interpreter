@@ -50,6 +50,10 @@ class parser_type {
     ,parse_mode_( PARSE_MODE_START )
   {
     grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+    current_new_var_idx_[0] = 0U;
+    std::cout << "debug: current_new_var_idx_ size is " << current_new_var_idx_.size() << "\n";
+    new_variable_index_[0] = 0U;
+    std::cout << "debug: new_variable_index_ size is " << new_variable_index_.size() << "\n";
   }
 
   bool parse_char( char c );
@@ -211,12 +215,18 @@ class parser_type {
     ,PARSE_MODE_OPERAND_EXPECTED
     ,PARSE_MODE_OPERATOR_EXPECTED
     ,PARSE_MODE_VARIABLE_DEFINITION_START
+    ,PARSE_MODE_FN_LPARENS_EXPECTED
   };
 
 
+  enum symbol_type {
+    SYMBOL_TYPE_VARIABLE
+    ,SYMBOL_TYPE_FUNCTION
+  };
+
   struct symbol_table_data_type {
-    size_t index;
-    // TODO. type
+    size_t      index;
+    symbol_type type;
   };
 
   bool anchor_jump_here_( size_t idx );
@@ -232,7 +242,7 @@ class parser_type {
 
   
   bool update_stacks_with_operator_(
-				    eval_id_type                       eval_id
+				    eval_data_type                       eval_data
 				   );
 
   std::string                                                current_token_;

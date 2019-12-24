@@ -54,6 +54,8 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_CALL
   ,EVAL_ID_TYPE_OP_RETURN
 
+  ,EVAL_ID_TYPE_OP_FN
+
   // NOTE: from this point down,
   //  it is assumed these enums match up
   //  with token_id_type

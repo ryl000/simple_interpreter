@@ -1,0 +1,18 @@
+fn double teste() {
+  (99);
+  (100);
+}
+
+fn double testf() {
+  (1);
+  (2);
+  teste();
+  (3);
+}
+
+if ( 1 ) {
+  testf();
+}
+
+4;
+5;
