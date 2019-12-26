@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include "symbol_table_data_type.h"
+
 
 enum eval_id_type {
   EVAL_ID_TYPE_PUSHD = 0
@@ -42,6 +44,10 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_JMP
   ,EVAL_ID_TYPE_OP_JMPA
 
+  // TODO. we need several modes
+  //  "absolute" address (for things like globals)
+  //  relative to stack base frame
+  //  relative to top-of-stack?
   ,EVAL_ID_TYPE_OP_PUSHADDR
   ,EVAL_ID_TYPE_OP_PUSHADDRS
   ,EVAL_ID_TYPE_OP_COPYTOADDR
@@ -92,7 +98,9 @@ struct eval_data_type {
     ,id( EVAL_ID_TYPE_PUSHD )
     ,addr_arg( 0U )
     ,jump_arg( 0 )
+    ,offset_arg( 0 )
     ,pop_arg( 0U )
+    ,symbol_data( nullptr )
   {}
 
   explicit eval_data_type( eval_id_type in_id )
@@ -100,12 +108,17 @@ struct eval_data_type {
     ,id( in_id )
     ,addr_arg( 0U )
     ,jump_arg( 0 )
+    ,offset_arg( 0 )
     ,pop_arg( 0U )
+    ,symbol_data( nullptr )
   {}
   
   double              value;
   eval_id_type        id;
   size_t              addr_arg;
   int32_t             jump_arg;  // TODO. handle 32-bit size_t by making this int16_t ?
+  int32_t             offset_arg;
   size_t              pop_arg;
+
+  const symbol_table_data_type *symbol_data;
 };

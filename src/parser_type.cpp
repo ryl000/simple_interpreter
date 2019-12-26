@@ -196,13 +196,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	    }
 	    else {
-	      // reserve space on dstack for return value
-	      // TODO. allow for void returns
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-	      statements_.back().jump_arg = 8; // size of double
-	      // TODO. push function onto stack
+	      // TODO. if this fn returns void, it cannot be part of
+	      // a "compound" expression
 	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
 	      new_fn.addr_arg = iter->second.index;
+	      new_fn.symbol_data = &(iter->second);
 	      update_stacks_with_operator_( new_fn );
 	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
 	    }
@@ -296,6 +294,9 @@ bool parser_type::statement_parser_( const token_type &last_token )
     }
     else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
       // TODO. restrict this to function mode only!
+      //  i.e., xyz() is allowed, but
+      //  3 + () should not be
+      //
       if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
@@ -482,8 +483,35 @@ bool parser_type::update_stacks_with_operator_(
       }
 
       if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_FN ) {
+	// TODO. allow for void returns
+	size_t stack_space = 8U;
+
+	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
+	  stack_space += (operator_stack_.back().symbol_data->fn_nargs * 8U);
+	}
+
+	// reserve space on dstack for return value + args
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	statements_.back().jump_arg = stack_space;
+	current_offset_from_stack_frame_base_.back() += stack_space;
+	std::cout << "debug(e): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
+
+	// transfer any args from estack to dstack
+	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
+	  int32_t offset = -8;
+	  for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDRS ) );
+	    statements_.back().offset_arg = current_offset_from_stack_frame_base_.back() + offset;
+	  }
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
+	  statements_.back().pop_arg = operator_stack_.back().symbol_data->fn_nargs;
+	}
+	
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
 	statements_.back().addr_arg = operator_stack_.back().addr_arg;
+
+	// TODO. transfer return value to estack
+	//  (but allow for void returns)
       }
       else {
 	statements_.emplace_back( operator_stack_.back() );
@@ -885,6 +913,7 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
 	    }
 	    else if ( std::strcmp( "fn", last_token.text.c_str() ) == 0 ) {
+	      // TODO. disallow "fn" inside fn...
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_START;
 	      
 	      // add a jump, that will be fixed at end-of-function to jump
@@ -894,6 +923,7 @@ bool parser_type::parse_char( char c )
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
 	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
+	    // TODO. add return?
 	    // TODO. add int?
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
@@ -926,12 +956,17 @@ bool parser_type::parse_char( char c )
 	    //   pop new_variable_index_
 	    //
 	    if ( !current_new_var_idx_.empty() ) {
-	      size_t prev = current_new_var_idx_[0];
+	      size_t prev = current_new_var_idx_.back();
 	      current_new_var_idx_.push_back( prev );
 	    }
 	    if ( !new_variable_index_.empty() ) {
-	      size_t prev = new_variable_index_[0];
+	      size_t prev = new_variable_index_.back();
 	      new_variable_index_.push_back( prev );
+	    }
+	    if ( !current_offset_from_stack_frame_base_.empty() ) {
+	      size_t prev = current_offset_from_stack_frame_base_.back();
+	      current_offset_from_stack_frame_base_.push_back( prev );
+	      std::cout << "debug(a): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
@@ -939,10 +974,11 @@ bool parser_type::parse_char( char c )
 	      --curly_braces_;
 	      symbol_table_.pop_back();
 	      current_new_var_idx_.pop_back();
+	      current_offset_from_stack_frame_base_.pop_back();
+	      std::cout << "debug(b): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 	      if ( !new_variable_index_.empty() ) {
 		size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
 		new_variable_index_.pop_back();
-#if 0
 		// If variables were defined in the most recent block, we need to 'pop'
 		// them off the d-stack
 		//
@@ -950,7 +986,6 @@ bool parser_type::parse_char( char c )
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
 		  statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
 		}
-#endif
 	      }
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	      reprocess                  = true;
@@ -992,6 +1027,8 @@ bool parser_type::parse_char( char c )
 
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
 	    statements_.back().jump_arg = 8; // size of double
+	    current_offset_from_stack_frame_base_.back() += 8U;
+	    std::cout << "debug(c): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 
 	    symbol_table_data_type new_variable;
 	    new_variable.index  = current_new_var_idx_.back();
@@ -1100,7 +1137,6 @@ bool parser_type::parse_char( char c )
 	    if ( (grammar_state_.size() > 1) ) {
 
 	      // "unwind" if/else as applicable
-	      // TODO. add function body end!
 	      //
 	      while ( grammar_state_.size() > 1
 		      &&
@@ -1115,10 +1151,9 @@ bool parser_type::parse_char( char c )
 		grammar_state_.pop_back();
 
 		if ( (grammar_state_.rbegin())->mode == GRAMMAR_MODE_DEFINE_FUNCTION_BODY ) {
-		  // TODO.
-		  //   This should put the contents of (old-stack-frame-base - 8) into the stack frame base,
-		  //   then jump to (old-stack-frame-base - 16)
-		  //
+
+		  // TODO. if the function has a return value, it needs to be pushed
+		  // onto the eval stack by the function body
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
 		  
 		  //  Fix-up the jump that was placed before the function
@@ -1237,11 +1272,19 @@ bool parser_type::parse_char( char c )
 	      }
 
 	      symbol_table_data_type new_function;
-	      new_function.index  = statements_.size();
-	      new_function.type   = SYMBOL_TYPE_FUNCTION;
+	      new_function.index    = statements_.size();
+	      new_function.type     = SYMBOL_TYPE_FUNCTION;
+	      new_function.fn_nargs = 0U;
 	      // TODO. more efficient insert, using find_lower_bound
-	      symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
+	      auto rv = symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
+	      current_fn_iter_ = rv.first;
 
+	      symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
+	      new_variable_index_.push_back( 0U );
+	      current_new_var_idx_.push_back( 0U );
+	      current_offset_from_stack_frame_base_.push_back( 0U );
+	      std::cout << "debug(d): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
+	      
 	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS;
 	    }
 	    else {
@@ -1285,11 +1328,28 @@ bool parser_type::parse_char( char c )
 	case GRAMMAR_MODE_EXPECT_FUNCTION_ARG_NAME:
 	  {
 	    if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	      // TODO. make sure not keyword, and not already used
-	      //  by a previously-defined arg name.
-	      //  then save this to the new function's "symbol table"
-	      //  we are building
-	      //
+
+	      if ( is_keyword( last_token.text ) ) {
+		grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+		break;
+	      }
+
+	      auto iter = symbol_table_.back().find( last_token.text );
+	      if ( iter != symbol_table_.back().end() ) {
+		std::cout << "ERROR: symbol already defined\n";
+		grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+		break;
+	      }
+	      current_new_var_idx_.back() = new_variable_index_.back();
+	      new_variable_index_.back() += 8U; // size of double
+	      
+	      symbol_table_data_type new_variable;
+	      new_variable.index  = current_new_var_idx_.back();
+	      new_variable.type   = SYMBOL_TYPE_VARIABLE;
+	      // TODO. more efficient insert, using find_lower_bound
+	      symbol_table_.back().insert( std::make_pair( last_token.text, new_variable ) );
+
+	      ++(current_fn_iter_->second.fn_nargs);
 	      grammar_state_.back().mode = GRAMMAR_MODE_FUNCTION_ARG_END;
 	    }
 	    else {
@@ -1314,39 +1374,9 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
 	    grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
-
 	    ++curly_braces_;
-	    // TODO. this symbol table should have:
-	    //  globals
-	    //  function args
-	    //
-	    symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
 
-	    new_variable_index_.push_back( 0U );
-	    current_new_var_idx_.push_back( 0U );
-	    
-	    // TRICKY. there's some logic tied to the opening curly brace, which needs
-	    //  to be adjusted for function start (vs block start)!
-	    //
-
-	    // TODO. add a new symbol table level, containing the arguments parsed from the
-	    //  function argument list
-	    //
-
-	    // TODO.
-	    //  add instructions for function prelude
-	    //    push current stack frame base onto stack
-	    //    set stack frame base to current stack pointer
-	    //
-	    //  So the stack will look like this at function entry
-	    //  (bottom to top):
-	    //  
-	    //    (space for return value(s))
-	    //    # of return values
-	    //    (args)
-	    //    # of args
-	    //    return address
-	    //    old stack frame base
+	    // NOTE: symbol table/variable setup is in FUNCTION_NAME state
 	    //
 	  }
 	  else {
@@ -1415,31 +1445,40 @@ bool parser_type::parse_char( char c )
 
 void print_statements( const std::vector<eval_data_type> &statement )
 {
+  size_t i = 0U;
   for ( std::vector<eval_data_type>::const_iterator iter( statement.begin() )
 	  ; iter != statement.end()
-	  ; ++iter ) {
+	  ; ++iter, ++i ) {
     if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
-      std::cout << "pushd " << iter->value << "\n";
+      std::cout << i << ": pushd " << iter->value << "\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_POP ) {
+      std::cout << i << ": pop " << iter->pop_arg << "\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
 	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
-      std::cout << operator_data[ iter->id ].text <<
+      std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->jump_arg <<
+	"\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDRS ) {
+      std::cout << i << ": " << operator_data[ iter->id ].text <<
+	" " << iter->offset_arg <<
 	"\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_PUSHADDR &&
 	      iter->id <= EVAL_ID_TYPE_OP_COPYFROMADDR ) {
-      std::cout << operator_data[ iter->id ].text <<
+      std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) {
-      std::cout << operator_data[ iter->id ].text <<
+      std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->jump_arg <<
 	"\n";
     }
     else {
-      std::cout << operator_data[ iter->id ].text << "\n";
+      std::cout << i << ": " << operator_data[ iter->id ].text << "\n";
     }
   }
 }

@@ -380,6 +380,7 @@ bool evaluate(
       // OP-POP <narg>
       //  narg, -narg, +0
       {
+	std::cout << "debug: pop\n";
 	if ( evaluation_stack.back().size() < iter->pop_arg ) {
 	  return false;
 	}
@@ -483,6 +484,27 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_COPYTOADDRS:
+      // OP-COPY-TO-STACK-OFFSET <offset>
+      //  1, -0, +0
+      {
+	std::cout << "debug: exec copy-to-stack-offset\n";
+	std::cout << " dst offset: " << iter->offset_arg << "\n";
+	std::cout << " dstack size is: " << data.size() << "\n";
+	std::cout << " dst idx: " << iter->offset_arg + stack_frame_base << "\n";
+	if ( evaluation_stack.back().empty() ) {
+	  std::cout << "debug: empty estack\n";
+	  return false;
+	}
+
+	double value = (evaluation_stack.back().rbegin())->value;
+	std::cout << "debug: copying " << value << " from estack to dstack\n";
+
+	char *src = reinterpret_cast<char*>( &value );
+	std::copy( src, src+8U, &(data[iter->offset_arg + stack_frame_base]) ); // TODO. variable-size copy
+      }
+      break;
+
     case EVAL_ID_TYPE_OP_MOVE_END_OF_STACK:
       // OP-MOVE-END-OF-STACK
       //  0, -0, +0
@@ -498,7 +520,7 @@ bool evaluate(
 	std::cout << "=====CALL=====\n";
 	std::cout << "current stack frame base is " << stack_frame_base << "\n";
 	std::cout << "data stack size is " << data.size() << "\n";
-	
+
 	// push address of next instruction onto stack
 	data.resize( data.size() + 8U );
 	*(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) = instr_index + 1U;

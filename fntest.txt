@@ -1,17 +1,17 @@
-fn double teste() {
+fn double teste( double y ) {
   (99);
   (100);
 }
 
-fn double testf() {
+fn double testf( double z ) {
   (1);
   (2);
-  teste();
+  teste( 15 );
   (3);
 }
 
 if ( 1 ) {
-  testf();
+  testf( 7 );
 }
 
 4;

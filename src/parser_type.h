@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "eval_data_type.h"
+#include "symbol_table_data_type.h"
 
 
 class parser_type {
@@ -42,6 +43,7 @@ class parser_type {
     ,symbol_table_( 1U )
     ,current_new_var_idx_( 1U )
     ,new_variable_index_( 1U )
+    ,current_offset_from_stack_frame_base_( 1U )
     ,char_no_(0U)
     ,curly_braces_(0U)
     ,line_no_(0U)
@@ -52,6 +54,7 @@ class parser_type {
     grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
     current_new_var_idx_[0] = 0U;
     new_variable_index_[0] = 0U;
+    current_offset_from_stack_frame_base_[0] = 0U;
   }
 
   bool parse_char( char c );
@@ -217,16 +220,6 @@ class parser_type {
   };
 
 
-  enum symbol_type {
-    SYMBOL_TYPE_VARIABLE
-    ,SYMBOL_TYPE_FUNCTION
-  };
-
-  struct symbol_table_data_type {
-    size_t      index;
-    symbol_type type;
-  };
-
   bool anchor_jump_here_( size_t idx );
 
   bool statement_parser_( const token_type &last_token );
@@ -253,6 +246,9 @@ class parser_type {
   std::vector<std::map<std::string,symbol_table_data_type>>  symbol_table_;
   std::vector<size_t>                                        current_new_var_idx_;
   std::vector<size_t>                                        new_variable_index_;
+  std::vector<size_t>                                        current_offset_from_stack_frame_base_;
+
+  std::map<std::string,symbol_table_data_type>::iterator     current_fn_iter_;
 
   size_t                                                     char_no_;
   size_t                                                     curly_braces_;
