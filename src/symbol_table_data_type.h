@@ -28,7 +28,7 @@ enum symbol_type {
 };
 
 struct symbol_table_data_type {
-  size_t      index;
+  int32_t     index;
   symbol_type type;
   size_t      fn_nargs;
 };

@@ -502,9 +502,9 @@ bool parser_type::update_stacks_with_operator_(
 	  for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDRS ) );
 	    statements_.back().offset_arg = current_offset_from_stack_frame_base_.back() + offset;
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
+	    statements_.back().pop_arg = 1U;
 	  }
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
-	  statements_.back().pop_arg = operator_stack_.back().symbol_data->fn_nargs;
 	}
 	
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
@@ -1371,16 +1371,29 @@ bool parser_type::parse_char( char c )
 	  break;
 
 	case GRAMMAR_MODE_EXPECT_FUNCTION_BODY_START:
-	  if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
-	    grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
-	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
-	    ++curly_braces_;
-
-	    // NOTE: symbol table/variable setup is in FUNCTION_NAME state
+	  {
+	    
+	    // In this mode, the symbol table that constitutes the arguments
+	    // must be adjusted for the new stack frame base
 	    //
-	  }
-	  else {
-	    grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    for ( auto iter = symbol_table_.back().begin()
+		    ; iter != symbol_table_.back().end()
+		    ; ++iter ) {
+	      iter->second.index -= (16 + (current_fn_iter_->second.fn_nargs) * 8);
+	    }
+	  
+	    if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
+	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
+	      grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+	      ++curly_braces_;
+	      
+	      // NOTE: symbol table/variable setup is in FUNCTION_NAME state
+	      //
+	    }
+	    else {
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	    }
+	    
 	  }
 	  break;
 

@@ -40,7 +40,7 @@ namespace {
       ,type( OPERAND_TYPE_DOUBLE )
     {}
 
-    explicit operand_data_type( size_t in_addr )
+    explicit operand_data_type( int32_t in_addr )
       :value( 0. )
       ,addr( in_addr )
       ,type( OPERAND_TYPE_ADDR )

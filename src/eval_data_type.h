@@ -96,7 +96,7 @@ struct eval_data_type {
   explicit eval_data_type( double in_value )
     :value( in_value )
     ,id( EVAL_ID_TYPE_PUSHD )
-    ,addr_arg( 0U )
+    ,addr_arg( 0 )
     ,jump_arg( 0 )
     ,offset_arg( 0 )
     ,pop_arg( 0U )
@@ -106,7 +106,7 @@ struct eval_data_type {
   explicit eval_data_type( eval_id_type in_id )
     :value( 0.0 )
     ,id( in_id )
-    ,addr_arg( 0U )
+    ,addr_arg( 0 )
     ,jump_arg( 0 )
     ,offset_arg( 0 )
     ,pop_arg( 0U )
@@ -115,7 +115,7 @@ struct eval_data_type {
   
   double              value;
   eval_id_type        id;
-  size_t              addr_arg;
+  int32_t             addr_arg;
   int32_t             jump_arg;  // TODO. handle 32-bit size_t by making this int16_t ?
   int32_t             offset_arg;
   size_t              pop_arg;
