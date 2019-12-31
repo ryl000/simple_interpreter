@@ -108,8 +108,10 @@ namespace {
     ,{ 0,  "call" }
     ,{ 0,  "return" }
 
-    ,{ 9,  "fn" }
+    ,{ 0,  "print-dstack" }
     
+    ,{ 9,  "fn" }
+
     ,{ 8,  "add" }
     ,{ 8,  "subtract" }
 
@@ -491,10 +493,10 @@ bool parser_type::update_stacks_with_operator_(
 	}
 
 	// reserve space on dstack for return value + args
+	size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
 	statements_.back().jump_arg = stack_space;
 	current_offset_from_stack_frame_base_.back() += stack_space;
-	std::cout << "debug(e): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 
 	// transfer any args from estack to dstack
 	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
@@ -507,11 +509,24 @@ bool parser_type::update_stacks_with_operator_(
 	  }
 	}
 	
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+	
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
 	statements_.back().addr_arg = operator_stack_.back().addr_arg;
 
-	// TODO. transfer return value to estack
-	//  (but allow for void returns)
+	// adjust stack to remove the args that were passed to the function
+	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
+	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	  statements_.back().jump_arg = operator_stack_.back().symbol_data->fn_nargs * -8;
+	}
+
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+
+	// transfer return value to estack
+	// TODO. allow for void returns!
+	//
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+	statements_.back().addr_arg = ret_val_offset;
       }
       else {
 	statements_.emplace_back( operator_stack_.back() );
@@ -923,7 +938,11 @@ bool parser_type::parse_char( char c )
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
 	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
-	    // TODO. add return?
+	    else if ( std::strcmp( "return", last_token.text.c_str() ) == 0 ) {
+	      // TODO. only allow inside a function
+	      grammar_state_.back().return_mode = true;
+	      grammar_state_.back().mode        = GRAMMAR_MODE_STATEMENT;
+	    }
 	    // TODO. add int?
 	    else {
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
@@ -1112,6 +1131,21 @@ bool parser_type::parse_char( char c )
 	      return false;
 	    }
 
+	    if ( grammar_state_.back().return_mode ) {
+	      // pop estack value and place in return location
+	      int32_t offset = -24;
+	      offset -= (current_fn_iter_->second.fn_nargs * 8);
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDRS ) );
+	      statements_.back().offset_arg = offset;
+	      
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
+	      statements_.back().pop_arg = 1U;
+
+	      // return
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
+
+	      grammar_state_.back().return_mode = false;
+	    }
 	    // for semi-colon, we need to add an explicit command to clear the
 	    //  evaluation stack. Might want to add size checking...
 	    //  evaluation stack should either be down to 1 or 0 elements...
@@ -1152,9 +1186,11 @@ bool parser_type::parse_char( char c )
 
 		if ( (grammar_state_.rbegin())->mode == GRAMMAR_MODE_DEFINE_FUNCTION_BODY ) {
 
-		  // TODO. if the function has a return value, it needs to be pushed
-		  // onto the eval stack by the function body
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
+		  // TODO. need to detect if this function body was properly terminated with
+		  // an ending return...
+		  // All "terminating" code paths must end in a return x (if function
+		  // does not return void)
+		  //
 		  
 		  //  Fix-up the jump that was placed before the function
 		  //    definition, so we jump past the function definition
@@ -1387,6 +1423,8 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	      ++curly_braces_;
 	      
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+
 	      // NOTE: symbol table/variable setup is in FUNCTION_NAME state
 	      //
 	    }

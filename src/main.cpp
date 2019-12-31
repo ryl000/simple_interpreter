@@ -100,10 +100,6 @@ int main( int argc, char* argv[] )
       std::cerr << "ERROR: evaluation error\n";
     }
 
-    if ( !data.empty() ) {
-      std::cout << "x is " << *(reinterpret_cast<double*>( &(data[0]) ) ) << "\n";
-      std::cout << "y is " << *(reinterpret_cast<double*>( &(data[8]) ) ) << "\n";
-    }
   }
 
 

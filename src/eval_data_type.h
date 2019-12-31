@@ -60,6 +60,8 @@ enum eval_id_type {
   ,EVAL_ID_TYPE_OP_CALL
   ,EVAL_ID_TYPE_OP_RETURN
 
+  ,EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK
+
   ,EVAL_ID_TYPE_OP_FN
 
   // NOTE: from this point down,

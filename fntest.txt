@@ -1,7 +1,7 @@
 fn double teste( double y ) {
   (99);
   (100);
-  y;
+  return y;
 }
 
 fn double testf( double z, double a ) {
@@ -10,7 +10,7 @@ fn double testf( double z, double a ) {
   teste( 15 );
   (3);
   z + z;
-  a - z;
+  return a - z;
 }
 
 if ( 1 ) {

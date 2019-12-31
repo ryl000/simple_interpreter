@@ -182,6 +182,7 @@ class parser_type {
     size_t               jump_offset; // TODO. add multiple jump offsets, to allow for break statement inside loop?
     size_t               loopback_offset;
     branching_mode_type  branching_mode;
+    bool                 return_mode;
 
     grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
       :block_depth( in_block_depth )
@@ -189,6 +190,7 @@ class parser_type {
       ,jump_offset( 0U )
       ,loopback_offset( 0U )
       ,branching_mode( BRANCHING_MODE_IF )
+      ,return_mode( false )
     {}
   };
 

@@ -1,0 +1,5 @@
+fn double testf( double z, double a ) {
+  return a - z;
+}
+
+testf( 7, 10 );

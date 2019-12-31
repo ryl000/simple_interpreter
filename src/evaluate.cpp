@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright 2019 Ray Li
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -489,6 +489,7 @@ bool evaluate(
       //  1, -0, +0
       {
 	std::cout << "debug: exec copy-to-stack-offset\n";
+	std::cout << " sfb: " << stack_frame_base << "\n";
 	std::cout << " dst offset: " << iter->offset_arg << "\n";
 	std::cout << " dstack size is: " << data.size() << "\n";
 	std::cout << " dst idx: " << iter->offset_arg + stack_frame_base << "\n";
@@ -499,6 +500,7 @@ bool evaluate(
 
 	double value = (evaluation_stack.back().rbegin())->value;
 	std::cout << "debug: copying " << value << " from estack to dstack\n";
+	std::cout << "  dstack offset idx is " << iter->offset_arg << "\n";
 
 	char *src = reinterpret_cast<char*>( &value );
 	std::copy( src, src+8U, &(data[iter->offset_arg + stack_frame_base]) ); // TODO. variable-size copy
@@ -569,6 +571,17 @@ bool evaluate(
 	stack_frame_base = old_stack_frame_base;
 	instr_index      = return_address;
 	jump_absolute    = true;
+      }
+      break;
+
+    case EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK:
+      // TODO.
+      std::cout << "DEBUG: stack size is " << data.size() << "\n";
+      {
+	for ( size_t i=0U; i<data.size(); i += 8 ) {
+	  std::cout << i << ": " << *(reinterpret_cast<double*>( &(data[i]) )) << ","
+		    << *(reinterpret_cast<size_t*>( &(data[i]) )) << "\n";
+	}
       }
       break;
 
