@@ -8,13 +8,19 @@ if ( y > 8 ) {
   (1);
   {
     double x = 999;
-    double z = 15;
+    double z = 25;
+    x;
+    z;
+    y;
+    y = 777;
   }
 }
 else {
   (0);
 }
 
+x;
+y;
 
 fn double testf() {
   (1);

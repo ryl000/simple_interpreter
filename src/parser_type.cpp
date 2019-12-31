@@ -98,10 +98,10 @@ namespace {
 
     ,{ 0,  "push-addr" }
     ,{ 0,  "push-addr-stack" }
-    ,{ 0,  "copytoaddr" }
-    ,{ 0,  "copytoaddr-stack" }
-    ,{ 0,  "copyfromaddr" }
-    ,{ 0,  "copyfromaddr-stack" }
+    ,{ 0,  "copy-to-addr" }
+    ,{ 0,  "copy-from-addr" }
+    ,{ 0,  "copy-to-stack-offset" }
+    ,{ 0,  "copy-from-stack-offset" }
 
     ,{ 0,  "move-end-of-stack" }
     ,{ 0,  "set-set-frame-base-to-end-of-stack" }
@@ -187,24 +187,33 @@ bool parser_type::statement_parser_( const token_type &last_token )
 		; ++st_iter ) {
 	  auto iter = st_iter->find( last_token.text );
 	  if ( iter != st_iter->end() ) {
-	    symbol_found = true;
-	    // TODO. depending on the level, this is either a stack-pointer-relative offset,
-	    // or an absolute offset. Or maybe "absolute" is stack-frame-relative as well,
-	    // just with a stack frame base addr of 0?
-	    //
 	    if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	      statements_.back().addr_arg = iter->second.index;
+	      if ( !(iter->second.is_abs) ) {
+		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+		statements_.back().offset_arg = iter->second.sfb_offset;
+	      }
+	      else {
+		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+		statements_.back().addr_arg = iter->second.addr;
+	      }
 	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	      symbol_found = true;
 	    }
 	    else {
 	      // TODO. if this fn returns void, it cannot be part of
 	      // a "compound" expression
 	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
-	      new_fn.addr_arg = iter->second.index;
+
+	      // TODO. for now, only "absolute" addresses allowed
+	      if ( !(iter->second.is_abs) ) {
+		std::cout << "ERROR: nested functions not currently allowed\n";
+		break;
+	      }
+	      new_fn.addr_arg = iter->second.addr;
 	      new_fn.symbol_data = &(iter->second);
 	      update_stacks_with_operator_( new_fn );
 	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
+	      symbol_found = true;
 	    }
 	  }
 	}
@@ -263,8 +272,14 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	    // or an absolute offset. Or maybe "absolute" is stack-frame-relative as well,
 	    // just with a stack frame base addr of 0?
 	    //
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	    statements_.back().addr_arg = iter->second.index;
+	    if ( !(iter->second.is_abs) ) {
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+	      statements_.back().offset_arg = iter->second.sfb_offset;
+	    }
+	    else {
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+	      statements_.back().addr_arg = iter->second.addr;
+	    }
 	    parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 	  }
 	}
@@ -340,7 +355,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  if ( statements_.empty() ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
-	  else if ( statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+	  else if ( statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET
+		    &&
+		    statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMADDR
+		    ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  else {
@@ -502,7 +520,7 @@ bool parser_type::update_stacks_with_operator_(
 	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
 	  int32_t offset = -8;
 	  for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDRS ) );
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
 	    statements_.back().offset_arg = current_offset_from_stack_frame_base_.back() + offset;
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
 	    statements_.back().pop_arg = 1U;
@@ -525,8 +543,8 @@ bool parser_type::update_stacks_with_operator_(
 	// transfer return value to estack
 	// TODO. allow for void returns!
 	//
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-	statements_.back().addr_arg = ret_val_offset;
+	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+	statements_.back().offset_arg = ret_val_offset;
       }
       else {
 	statements_.emplace_back( operator_stack_.back() );
@@ -985,7 +1003,6 @@ bool parser_type::parse_char( char c )
 	    if ( !current_offset_from_stack_frame_base_.empty() ) {
 	      size_t prev = current_offset_from_stack_frame_base_.back();
 	      current_offset_from_stack_frame_base_.push_back( prev );
-	      std::cout << "debug(a): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
@@ -994,7 +1011,6 @@ bool parser_type::parse_char( char c )
 	      symbol_table_.pop_back();
 	      current_new_var_idx_.pop_back();
 	      current_offset_from_stack_frame_base_.pop_back();
-	      std::cout << "debug(b): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 	      if ( !new_variable_index_.empty() ) {
 		size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
 		new_variable_index_.pop_back();
@@ -1047,11 +1063,16 @@ bool parser_type::parse_char( char c )
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
 	    statements_.back().jump_arg = 8; // size of double
 	    current_offset_from_stack_frame_base_.back() += 8U;
-	    std::cout << "debug(c): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 
 	    symbol_table_data_type new_variable;
-	    new_variable.index  = current_new_var_idx_.back();
-	    new_variable.type   = SYMBOL_TYPE_VARIABLE;
+	    if ( symbol_table_.size() == 1 ) {
+	      new_variable.is_abs = true;
+	      new_variable.addr   = current_new_var_idx_.back();
+	    }
+	    else {
+	      new_variable.sfb_offset  = current_new_var_idx_.back();
+	    }
+	    new_variable.type        = SYMBOL_TYPE_VARIABLE;
 	    // TODO. more efficient insert, using find_lower_bound
 	    symbol_table_.back().insert( std::make_pair( last_token.text, new_variable ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
@@ -1080,8 +1101,17 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	    }
 	    else {
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
-	      statements_.back().addr_arg = current_new_var_idx_.back();
+	      // TODO. distinguish between copy-to-absolute (for globals)
+	      //  vs copy-to-stack (for stack-local)
+	      //
+	      if ( symbol_table_.size() == 1 ) {
+		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
+		statements_.back().addr_arg = current_new_var_idx_.back();
+	      }
+	      else {
+		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
+		statements_.back().offset_arg = current_new_var_idx_.back();
+	      }
 	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }
@@ -1135,7 +1165,7 @@ bool parser_type::parse_char( char c )
 	      // pop estack value and place in return location
 	      int32_t offset = -24;
 	      offset -= (current_fn_iter_->second.fn_nargs * 8);
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDRS ) );
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
 	      statements_.back().offset_arg = offset;
 	      
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
@@ -1308,9 +1338,12 @@ bool parser_type::parse_char( char c )
 	      }
 
 	      symbol_table_data_type new_function;
-	      new_function.index    = statements_.size();
-	      new_function.type     = SYMBOL_TYPE_FUNCTION;
-	      new_function.fn_nargs = 0U;
+	      // TODO. for now, functions always "absolute" adddresses
+	      //  Maybe later, we can have nested functions...
+	      new_function.is_abs     = true;
+	      new_function.addr       = statements_.size();
+	      new_function.type       = SYMBOL_TYPE_FUNCTION;
+	      new_function.fn_nargs   = 0U;
 	      // TODO. more efficient insert, using find_lower_bound
 	      auto rv = symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
 	      current_fn_iter_ = rv.first;
@@ -1319,7 +1352,6 @@ bool parser_type::parse_char( char c )
 	      new_variable_index_.push_back( 0U );
 	      current_new_var_idx_.push_back( 0U );
 	      current_offset_from_stack_frame_base_.push_back( 0U );
-	      std::cout << "debug(d): current-offset-from-stack-frame-base is now " << current_offset_from_stack_frame_base_.back() << "\n";
 	      
 	      grammar_state_.back().mode = GRAMMAR_MODE_EXPECT_FUNCTION_OPEN_PARENS;
 	    }
@@ -1380,8 +1412,8 @@ bool parser_type::parse_char( char c )
 	      new_variable_index_.back() += 8U; // size of double
 	      
 	      symbol_table_data_type new_variable;
-	      new_variable.index  = current_new_var_idx_.back();
-	      new_variable.type   = SYMBOL_TYPE_VARIABLE;
+	      new_variable.sfb_offset = current_new_var_idx_.back();
+	      new_variable.type       = SYMBOL_TYPE_VARIABLE;
 	      // TODO. more efficient insert, using find_lower_bound
 	      symbol_table_.back().insert( std::make_pair( last_token.text, new_variable ) );
 
@@ -1415,7 +1447,7 @@ bool parser_type::parse_char( char c )
 	    for ( auto iter = symbol_table_.back().begin()
 		    ; iter != symbol_table_.back().end()
 		    ; ++iter ) {
-	      iter->second.index -= (16 + (current_fn_iter_->second.fn_nargs) * 8);
+	      iter->second.sfb_offset -= (16 + (current_fn_iter_->second.fn_nargs) * 8);
 	    }
 	  
 	    if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
@@ -1512,13 +1544,20 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	" " << iter->jump_arg <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDRS ) {
+    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDR ||
+	      iter->id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+      std::cout << i << ": " << operator_data[ iter->id ].text <<
+	" " << iter->addr_arg <<
+	"\n";
+    }
+    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ||
+	      iter->id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->offset_arg <<
 	"\n";
     }
-    else if ( iter->id >= EVAL_ID_TYPE_OP_PUSHADDR &&
-	      iter->id <= EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+    else if ( iter->id == EVAL_ID_TYPE_OP_PUSHADDR ||
+	      iter->id == EVAL_ID_TYPE_OP_PUSHADDRS ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
 	"\n";

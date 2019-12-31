@@ -457,11 +457,24 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_COPYFROMADDR:
+      // OP-COPY-FROM-ADDR <addr>
+      //  0, -0, +1
+      {
+	double new_value;
+	char *src = &(data[iter->addr_arg]);
+	char *dst = reinterpret_cast<char*>( &new_value );
+	std::copy( src, src+8U, dst ); // TODO. variable-size copy
+
+	evaluation_stack.back().emplace_back( operand_data_type( new_value ) );
+      }
+      break;
+
+    case EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET:
       // OP-COPY-FROM-OFFSET <offset>
       //  0, -0, +1
       {
 	double new_value;
-	char *src = &(data[iter->addr_arg + stack_frame_base]);
+	char *src = &(data[iter->offset_arg + stack_frame_base]);
 	char *dst = reinterpret_cast<char*>( &new_value );
 	std::copy( src, src+8U, dst ); // TODO. variable-size copy
 
@@ -470,7 +483,7 @@ bool evaluate(
       break;
 
     case EVAL_ID_TYPE_OP_COPYTOADDR:
-      // OP-COPY-TO-OFFSET <offset>
+      // OP-COPY-TO-ADDR <addr>
       //  1, -0, +0
       {
 	if ( evaluation_stack.back().empty() ) {
@@ -480,27 +493,19 @@ bool evaluate(
 	double value = (evaluation_stack.back().rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &value );
-	std::copy( src, src+8U, &(data[iter->addr_arg + stack_frame_base]) ); // TODO. variable-size copy
+	std::copy( src, src+8U, &(data[iter->addr_arg]) ); // TODO. variable-size copy
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYTOADDRS:
+    case EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET:
       // OP-COPY-TO-STACK-OFFSET <offset>
       //  1, -0, +0
       {
-	std::cout << "debug: exec copy-to-stack-offset\n";
-	std::cout << " sfb: " << stack_frame_base << "\n";
-	std::cout << " dst offset: " << iter->offset_arg << "\n";
-	std::cout << " dstack size is: " << data.size() << "\n";
-	std::cout << " dst idx: " << iter->offset_arg + stack_frame_base << "\n";
 	if ( evaluation_stack.back().empty() ) {
-	  std::cout << "debug: empty estack\n";
 	  return false;
 	}
 
 	double value = (evaluation_stack.back().rbegin())->value;
-	std::cout << "debug: copying " << value << " from estack to dstack\n";
-	std::cout << "  dstack offset idx is " << iter->offset_arg << "\n";
 
 	char *src = reinterpret_cast<char*>( &value );
 	std::copy( src, src+8U, &(data[iter->offset_arg + stack_frame_base]) ); // TODO. variable-size copy
@@ -512,7 +517,6 @@ bool evaluate(
       //  0, -0, +0
       {
 	size_t new_size = data.size() + iter->jump_arg;
-	std::cout << "attempting to move end of stack to " << new_size << "\n";
 	data.resize( new_size );
       }
       break;

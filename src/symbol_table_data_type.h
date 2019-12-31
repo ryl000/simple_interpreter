@@ -28,7 +28,17 @@ enum symbol_type {
 };
 
 struct symbol_table_data_type {
-  int32_t     index;
-  symbol_type type;
+  symbol_table_data_type()
+    :addr( 0U )
+    ,sfb_offset( 0 )
+    ,is_abs( false )
+    ,type( SYMBOL_TYPE_VARIABLE )
+    ,fn_nargs( 0U )
+  {}
+
+  size_t      addr;
   size_t      fn_nargs;
+  int32_t     sfb_offset;
+  bool        is_abs;
+  symbol_type type;
 };
