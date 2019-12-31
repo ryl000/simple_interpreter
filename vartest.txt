@@ -10,6 +10,8 @@ if ( y > 8 ) {
     double x = 999;
     double z = 25;
     x;
+    x = 10;
+    x;
     z;
     y;
     y = 777;

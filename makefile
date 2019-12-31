@@ -3,7 +3,7 @@ sinterp: evaluate.o parser_type.o main.o
 
 .PHONY: clean
 clean:
-	rm *.o sinterp
+	rm -f *.o sinterp
 
 evaluate.o : src/evaluate.cpp
 	g++ -g -Wall -Wextra -std=c++17 -c src/evaluate.cpp

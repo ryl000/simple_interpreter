@@ -79,6 +79,7 @@ namespace {
   //
   const operator_data_type operator_data[] = {
     { 0, "push double" }
+    ,{ 0, "push int" }
 
     ,{ 10, "not" }
     ,{ 10, "negate" }
@@ -352,17 +353,46 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  // a push-addr, because the assign-op needs that addr
 	  // for the assignment
 	  //
+	  // TODO. we need to distinguish assign-to-addr and
+	  //  assign-to-stack-offset!
+	  //
+	  // TODO. instead of having
+	  //  PUSHADDR x
+	  //  ...
+	  //  ASSIGN
+	  // do
+	  //  ...
+	  //  ASSIGN x
+	  // ?
+	  //
+	  // OR.
+	  //  (absolute)
+	  //  PUSHADDR x
+	  //  PUSHD    1
+	  //  ...
+	  //  ASSIGN
+	  //
+	  //  (stack-offset)
+	  //  PUSHADDR x
+	  //  PUSHD    0
+	  //  ...
+	  //  ASSIGN
+	  //
 	  if ( statements_.empty() ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
-	  else if ( statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET
-		    &&
-		    statements_.back().id != EVAL_ID_TYPE_OP_COPYFROMADDR
-		    ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
+	  else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
+	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHSTACKOFFSET;
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	    statements_.back().ivalue = 0;
+	  }
+	  else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
+	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	    statements_.back().ivalue = 1;
 	  }
 	  else {
-	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
+	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	}
 
@@ -1535,6 +1565,9 @@ void print_statements( const std::vector<eval_data_type> &statement )
     if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
       std::cout << i << ": pushd " << iter->value << "\n";
     }
+    else if ( iter->id == EVAL_ID_TYPE_PUSHI ) {
+      std::cout << i << ": pushi " << iter->ivalue << "\n";
+    }
     else if ( iter->id == EVAL_ID_TYPE_OP_POP ) {
       std::cout << i << ": pop " << iter->pop_arg << "\n";
     }
@@ -1557,7 +1590,7 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_PUSHADDR ||
-	      iter->id == EVAL_ID_TYPE_OP_PUSHADDRS ) {
+	      iter->id == EVAL_ID_TYPE_OP_PUSHSTACKOFFSET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->addr_arg <<
 	"\n";

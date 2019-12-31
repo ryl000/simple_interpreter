@@ -27,6 +27,7 @@
 
 enum eval_id_type {
   EVAL_ID_TYPE_PUSHD = 0
+  ,EVAL_ID_TYPE_PUSHI
   
   ,EVAL_ID_TYPE_OP_NOT
   ,EVAL_ID_TYPE_OP_NEGATE
@@ -49,7 +50,7 @@ enum eval_id_type {
   //  relative to stack base frame
   //  relative to top-of-stack?
   ,EVAL_ID_TYPE_OP_PUSHADDR
-  ,EVAL_ID_TYPE_OP_PUSHADDRS
+  ,EVAL_ID_TYPE_OP_PUSHSTACKOFFSET
   ,EVAL_ID_TYPE_OP_COPYTOADDR
   ,EVAL_ID_TYPE_OP_COPYFROMADDR
   ,EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET
@@ -97,8 +98,20 @@ struct eval_data_type {
 
   explicit eval_data_type( double in_value )
     :value( in_value )
+    ,ivalue( 0 )
     ,id( EVAL_ID_TYPE_PUSHD )
-    ,addr_arg( 0 )
+    ,addr_arg( 0U )
+    ,jump_arg( 0 )
+    ,offset_arg( 0 )
+    ,pop_arg( 0U )
+    ,symbol_data( nullptr )
+  {}
+
+  explicit eval_data_type( int in_ivalue )
+    :value( 0 )
+    ,ivalue( in_ivalue )
+    ,id( EVAL_ID_TYPE_PUSHI )
+    ,addr_arg( 0U )
     ,jump_arg( 0 )
     ,offset_arg( 0 )
     ,pop_arg( 0U )
@@ -107,8 +120,9 @@ struct eval_data_type {
 
   explicit eval_data_type( eval_id_type in_id )
     :value( 0.0 )
+    ,ivalue( 0 )
     ,id( in_id )
-    ,addr_arg( 0 )
+    ,addr_arg( 0U )
     ,jump_arg( 0 )
     ,offset_arg( 0 )
     ,pop_arg( 0U )
@@ -116,8 +130,9 @@ struct eval_data_type {
   {}
   
   double              value;
+  int32_t             ivalue;
   eval_id_type        id;
-  int32_t             addr_arg;
+  size_t              addr_arg;
   int32_t             jump_arg;  // TODO. handle 32-bit size_t by making this int16_t ?
   int32_t             offset_arg;
   size_t              pop_arg;

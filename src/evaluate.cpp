@@ -36,12 +36,21 @@ namespace {
   struct operand_data_type {
     explicit operand_data_type( double in_value )
       :value( in_value )
+      ,ivalue( 0 )
       ,addr( 0U )
       ,type( OPERAND_TYPE_DOUBLE )
     {}
 
-    explicit operand_data_type( int32_t in_addr )
+    explicit operand_data_type( int32_t in_ivalue )
       :value( 0. )
+      ,ivalue( in_ivalue )
+      ,addr( 0U )
+      ,type( OPERAND_TYPE_INT32 )
+    {}
+
+    explicit operand_data_type( size_t in_addr )
+      :value( 0. )
+      ,ivalue( 0 )
       ,addr( in_addr )
       ,type( OPERAND_TYPE_ADDR )
     {}
@@ -53,6 +62,7 @@ namespace {
     }
     
     double       value;
+    int          ivalue;
     size_t       addr;
     operand_type type;
   };
@@ -90,10 +100,22 @@ bool evaluate(
       evaluation_stack.back().push_back( operand_data_type( iter->value ) );
       break;
 
+    case EVAL_ID_TYPE_PUSHI:
+      // PUSH-INT <ival>
+      //  0, -0, +1
+      evaluation_stack.back().push_back( operand_data_type( iter->ivalue ) );
+      break;
+
     case EVAL_ID_TYPE_OP_PUSHADDR:
-      // PUSH-OFFSET <offset>
+      // PUSH-ADDR <addr>
       //  0, -0, +1
       evaluation_stack.back().push_back( operand_data_type( iter->addr_arg ) );
+      break;
+
+    case EVAL_ID_TYPE_OP_PUSHSTACKOFFSET:
+      // PUSH-OFFSET <offset>
+      //  0, -0, +1
+      evaluation_stack.back().push_back( operand_data_type( iter->offset_arg ) );
       break;
 
     case EVAL_ID_TYPE_OP_NOT:
@@ -343,19 +365,28 @@ bool evaluate(
 
     case EVAL_ID_TYPE_OP_ASSIGN:
       // OP-ASSIGN
-      //  2, -2, +1
+      //  3, -3, +1
       {
-	if ( evaluation_stack.back().size() < 2 ) {
+	if ( evaluation_stack.back().size() < 3 ) {
 	  return false;
 	}
 
-	size_t dst_idx = (evaluation_stack.back().rbegin() + 1U)->addr;
 
 	double new_value = (evaluation_stack.back().rbegin())->value; // TODO. varible type
-
 	char *src = reinterpret_cast<char*>( &new_value );
-	std::copy( src, src+8U, &(data[dst_idx + stack_frame_base]) );
 
+	int is_abs = (evaluation_stack.back().rbegin() + 1U)->ivalue;
+
+	if ( is_abs ) {
+	  size_t dst_idx = (evaluation_stack.back().rbegin() + 2U)->addr;
+	  std::copy( src, src+8U, &(data[dst_idx]) );
+	}
+	else {
+	  int32_t dst_offset = (evaluation_stack.back().rbegin() + 2U)->ivalue;
+	  std::copy( src, src+8U, &(data[dst_offset + stack_frame_base]) );
+	}
+
+	evaluation_stack.back().pop_back();
 	evaluation_stack.back().pop_back();
 	evaluation_stack.back().back().value = new_value;
       }
