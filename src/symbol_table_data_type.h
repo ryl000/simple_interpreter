@@ -30,10 +30,10 @@ enum symbol_type {
 struct symbol_table_data_type {
   symbol_table_data_type()
     :addr( 0U )
+    ,fn_nargs( 0U )
     ,sfb_offset( 0 )
     ,is_abs( false )
     ,type( SYMBOL_TYPE_VARIABLE )
-    ,fn_nargs( 0U )
   {}
 
   size_t      addr;

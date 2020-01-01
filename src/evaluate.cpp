@@ -78,15 +78,11 @@ bool evaluate(
   std::vector<std::vector<operand_data_type>> evaluation_stack( 1U );
   size_t                                      stack_frame_base = 0U;
 
-  // TODO. make this int16_t for 32-bit?
-  //
-  int32_t  iter_increment           = 1;
-
-
   size_t instr_index = 0U;
   while ( instr_index < instructions.size() ) {
 
     bool    jump_absolute  = false;
+    // TODO. make this int16_t for 32-bit?
     int32_t iter_increment = 1;
 
     std::vector<eval_data_type>::const_iterator iter = instructions.begin() + instr_index;
@@ -620,10 +616,11 @@ bool evaluate(
       }
       break;
 
+    case EVAL_ID_TYPE_OP_COMMA:
+    case EVAL_ID_TYPE_OP_FINALIZE:
+    case EVAL_ID_TYPE_OP_FN:
     case EVAL_ID_TYPE_OP_LPARENS:
     case EVAL_ID_TYPE_OP_RPARENS:
-    case EVAL_ID_TYPE_OP_FINALIZE:
-    case EVAL_ID_TYPE_OP_COMMA:
       // NOTE. These should never occur...
       break;
     }

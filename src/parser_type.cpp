@@ -105,7 +105,6 @@ namespace {
     ,{ 0,  "copy-from-stack-offset" }
 
     ,{ 0,  "move-end-of-stack" }
-    ,{ 0,  "set-set-frame-base-to-end-of-stack" }
     ,{ 0,  "call" }
     ,{ 0,  "return" }
 
@@ -176,288 +175,188 @@ bool parser_type::anchor_jump_here_( size_t jump_idx )
 // TODO. need to add symbol_table_ as a parameter?
 bool parser_type::statement_parser_( const token_type &last_token )
 {
-  switch ( parse_mode_ ) {
+  bool reprocess = false;
 
-  case PARSE_MODE_START:
-    {
-      if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	// TODO. unify name lookup code
-	bool symbol_found = false;
-	for ( auto st_iter = symbol_table_.rbegin()
-		; !symbol_found && st_iter != symbol_table_.rend()
-		; ++st_iter ) {
-	  auto iter = st_iter->find( last_token.text );
-	  if ( iter != st_iter->end() ) {
-	    if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
-	      if ( !(iter->second.is_abs) ) {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
-		statements_.back().offset_arg = iter->second.sfb_offset;
-	      }
-	      else {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-		statements_.back().addr_arg = iter->second.addr;
-	      }
-	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	      symbol_found = true;
-	    }
-	    else {
-	      // TODO. if this fn returns void, it cannot be part of
-	      // a "compound" expression
-	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
+  do {
+    reprocess = false;
 
-	      // TODO. for now, only "absolute" addresses allowed
-	      if ( !(iter->second.is_abs) ) {
-		std::cout << "ERROR: nested functions not currently allowed\n";
-		break;
-	      }
-	      new_fn.addr_arg = iter->second.addr;
-	      new_fn.symbol_data = &(iter->second);
-	      update_stacks_with_operator_( new_fn );
-	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
-	      symbol_found = true;
-	    }
-	  }
-	}
+    switch ( parse_mode_ ) {
 
-	if ( !symbol_found ) {
-	  std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
-	  parse_mode_ = PARSE_MODE_ERROR;
-	}
-      }
-      else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	statements_.emplace_back( std::atof( last_token.text.c_str() ) );
-	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-      }
-      else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-		last_token.id == TOKEN_ID_TYPE_MINUS ||
-		last_token.id == TOKEN_ID_TYPE_NOT ) {
-	if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
-	}
-	else {
-	  // Nothing needs to be done for unary +
-	}
-	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-      }
-      else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
-	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-      }
-      else {
-	parse_mode_ = PARSE_MODE_ERROR;
-      }
-    }
-    break;
+    case PARSE_MODE_START:
+      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+      reprocess   = true;
+      break;
       
-  case PARSE_MODE_OPERAND_EXPECTED:
-    {
-      if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	// TODO. unify name lookup code
-	bool symbol_found = false;
-	for ( auto st_iter = symbol_table_.rbegin()
-		; !symbol_found && st_iter != symbol_table_.rend()
-		; ++st_iter ) {
-	  auto iter = st_iter->find( last_token.text );
-	  if ( iter != st_iter->end() ) {
-	    if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
-	      if ( !(iter->second.is_abs) ) {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
-		statements_.back().offset_arg = iter->second.sfb_offset;
+    case PARSE_MODE_OPERAND_EXPECTED:
+      {
+	if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	  bool symbol_found = false;
+	  for ( auto st_iter = symbol_table_.rbegin()
+		  ; !symbol_found && st_iter != symbol_table_.rend()
+		  ; ++st_iter ) {
+	    auto iter = st_iter->find( last_token.text );
+	    if ( iter != st_iter->end() ) {
+	      if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
+		if ( !(iter->second.is_abs) ) {
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+		  statements_.back().offset_arg = iter->second.sfb_offset;
+		}
+		else {
+		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+		  statements_.back().addr_arg = iter->second.addr;
+		}
+		parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+		symbol_found = true;
 	      }
 	      else {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-		statements_.back().addr_arg = iter->second.addr;
-	      }
-	      parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-	      symbol_found = true;
-	    }
-	    else {
-	      // TODO. if this fn returns void, it cannot be part of
-	      // a "compound" expression
-	      eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
+		// TODO. if this fn returns void, it cannot be part of
+		// a "compound" expression
+		eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
 
-	      // TODO. for now, only "absolute" addresses allowed
-	      if ( !(iter->second.is_abs) ) {
-		std::cout << "ERROR: nested functions not currently allowed\n";
-		break;
+		// TODO. for now, only "absolute" addresses allowed
+		if ( !(iter->second.is_abs) ) {
+		  std::cout << "ERROR: nested functions not currently allowed\n";
+		  break;
+		}
+		new_fn.addr_arg = iter->second.addr;
+		new_fn.symbol_data = &(iter->second);
+		update_stacks_with_operator_( new_fn );
+		parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
+		symbol_found = true;
 	      }
-	      new_fn.addr_arg = iter->second.addr;
-	      new_fn.symbol_data = &(iter->second);
-	      update_stacks_with_operator_( new_fn );
-	      parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
-	      symbol_found = true;
 	    }
 	  }
-	}
 
-	if ( !symbol_found ) {
-	  std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
+	  if ( !symbol_found ) {
+	    std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+	  statements_.emplace_back( std::atof( last_token.text.c_str() ) );
+	  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+		  last_token.id == TOKEN_ID_TYPE_MINUS ||
+		  last_token.id == TOKEN_ID_TYPE_NOT ) {
+	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+	    update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
+	  }
+	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
+	    update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
+	  }
+	  else {
+	    // Nothing needs to be done for unary +
+	  }
+	  // stay in this parse mode
+	}
+	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
+	  // stay in this parse mode
+	}
+#if 0
+	else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+	  // TODO. restrict this to function mode only!
+	  //  i.e., xyz() is allowed, but
+	  //  3 + () should not be
+	  //
+	  if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
+	    parse_mode_ = PARSE_MODE_ERROR;
+	  }
+	  // stay in this parse mode
+	}
+#endif
+	else {
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
       }
-      else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	statements_.emplace_back( std::atof( last_token.text.c_str() ) );
-	parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-      }
-      else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-		last_token.id == TOKEN_ID_TYPE_MINUS ||
-		last_token.id == TOKEN_ID_TYPE_NOT ) {
-	if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
-	}
-	else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
+      break;
+      
+    case PARSE_MODE_OPERATOR_EXPECTED:
+      if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+	   last_token.id == TOKEN_ID_TYPE_MINUS ||
+	   last_token.id == TOKEN_ID_TYPE_DIVIDE ||
+	   last_token.id == TOKEN_ID_TYPE_MULTIPLY ||
+	   last_token.id == TOKEN_ID_TYPE_ASSIGN ||
+	   last_token.id == TOKEN_ID_TYPE_COMMA ||
+	   last_token.id == TOKEN_ID_TYPE_EQ ||
+	   last_token.id == TOKEN_ID_TYPE_GE ||
+	   last_token.id == TOKEN_ID_TYPE_GT ||
+	   last_token.id == TOKEN_ID_TYPE_LE ||
+	   last_token.id == TOKEN_ID_TYPE_LT ||
+	   last_token.id == TOKEN_ID_TYPE_NEQ ||
+	   last_token.id == TOKEN_ID_TYPE_AND ||
+	   last_token.id == TOKEN_ID_TYPE_OR ) {
+	eval_id_type new_eval_id_type;
+	if ( !token_id_to_eval_id_( last_token.id, &new_eval_id_type ) ) {
+	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
-	  // Nothing needs to be done for unary +
+	
+	  if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+	    // If we've come across an assignment token, the
+	    // most recent statement must be a copyfromaddress/copyfromstackoffset
+	    // (i.e., a variable name). We will convert this to
+	    // a push-addr/push-stack-offset, because the assign-op needs that addr
+	    // for the assignment
+	    //
+	    if ( statements_.empty() ) {
+	      parse_mode_ = PARSE_MODE_ERROR;
+	    }
+	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
+	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHSTACKOFFSET;
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	      statements_.back().ivalue = 0;
+	    }
+	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
+	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	      statements_.back().ivalue = 1;
+	    }
+	    else {
+	      parse_mode_ = PARSE_MODE_ERROR;
+	    }
+	  }
+
+	  if ( parse_mode_ != PARSE_MODE_ERROR ) {
+	    if ( !update_stacks_with_operator_( eval_data_type( new_eval_id_type ) ) ) {
+	      parse_mode_ = PARSE_MODE_ERROR;
+	    }
+	    else {
+	      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+	    }
+	  }
 	}
-	// stay in this parse mode
       }
-      else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
-	// stay in this parse mode
-      }
-      #if 0
       else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	// TODO. restrict this to function mode only!
-	//  i.e., xyz() is allowed, but
-	//  3 + () should not be
-	//
 	if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
-	// stay in this parse mode
-      }
-      #endif
-      else {
-	parse_mode_ = PARSE_MODE_ERROR;
-      }
-    }
-    break;
-      
-  case PARSE_MODE_OPERATOR_EXPECTED:
-    if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-	 last_token.id == TOKEN_ID_TYPE_MINUS ||
-	 last_token.id == TOKEN_ID_TYPE_DIVIDE ||
-	 last_token.id == TOKEN_ID_TYPE_MULTIPLY ||
-	 last_token.id == TOKEN_ID_TYPE_ASSIGN ||
-	 last_token.id == TOKEN_ID_TYPE_COMMA ||
-	 last_token.id == TOKEN_ID_TYPE_EQ ||
-	 last_token.id == TOKEN_ID_TYPE_GE ||
-	 last_token.id == TOKEN_ID_TYPE_GT ||
-	 last_token.id == TOKEN_ID_TYPE_LE ||
-	 last_token.id == TOKEN_ID_TYPE_LT ||
-	 last_token.id == TOKEN_ID_TYPE_NEQ ||
-	 last_token.id == TOKEN_ID_TYPE_AND ||
-	 last_token.id == TOKEN_ID_TYPE_OR ) {
-      eval_id_type new_eval_id_type;
-      if ( !token_id_to_eval_id_( last_token.id, &new_eval_id_type ) ) {
-	parse_mode_ = PARSE_MODE_ERROR;
       }
       else {
-	
-	if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-	  // If we've come across an assignment token, the
-	  // most recent statement must be a copyfromaddress
-	  // (i.e., a variable name). We will convert this to
-	  // a push-addr, because the assign-op needs that addr
-	  // for the assignment
-	  //
-	  // TODO. we need to distinguish assign-to-addr and
-	  //  assign-to-stack-offset!
-	  //
-	  // TODO. instead of having
-	  //  PUSHADDR x
-	  //  ...
-	  //  ASSIGN
-	  // do
-	  //  ...
-	  //  ASSIGN x
-	  // ?
-	  //
-	  // OR.
-	  //  (absolute)
-	  //  PUSHADDR x
-	  //  PUSHD    1
-	  //  ...
-	  //  ASSIGN
-	  //
-	  //  (stack-offset)
-	  //  PUSHADDR x
-	  //  PUSHD    0
-	  //  ...
-	  //  ASSIGN
-	  //
-	  if ( statements_.empty() ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
-	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHSTACKOFFSET;
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
-	    statements_.back().ivalue = 0;
-	  }
-	  else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
-	    statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
-	    statements_.back().ivalue = 1;
-	  }
-	  else {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	}
-
-	if ( parse_mode_ != PARSE_MODE_ERROR ) {
-	  if ( !update_stacks_with_operator_( eval_data_type( new_eval_id_type ) ) ) {
-	    parse_mode_ = PARSE_MODE_ERROR;
-	  }
-	  else {
-	    parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-	  }
-	}
-      }
-    }
-    else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-      if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
-    }
-    else {
-      parse_mode_ = PARSE_MODE_ERROR;
-    }
-    break;
+      break;
 
     
-  case PARSE_MODE_VARIABLE_DEFINITION_START:
-    if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-      if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_ASSIGN ) ) ) {
+    case PARSE_MODE_FN_LPARENS_EXPECTED:
+      if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
+	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+      }
+      else {
 	parse_mode_ = PARSE_MODE_ERROR;
       }
-      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-    }
-    else {
-      parse_mode_ = PARSE_MODE_ERROR;
-    }
-    break;
-
-  case PARSE_MODE_FN_LPARENS_EXPECTED:
-    if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-      update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
-      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-    }
-    else {
-      parse_mode_ = PARSE_MODE_ERROR;
-    }
-    break;
+      break;
 
 
-  case PARSE_MODE_ERROR:
-    // do nothing
-    break;
+    case PARSE_MODE_ERROR:
+      // do nothing
+      break;
 
-  }
+    }
+
+  } while ( reprocess );
 
   return ( parse_mode_ != PARSE_MODE_ERROR );
 }
@@ -465,10 +364,16 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
 bool parser_type::statement_parser_finalize_()
 {
+  if ( parse_mode_ == PARSE_MODE_OPERAND_EXPECTED ) {
+    return false;
+  }
+
   if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_FINALIZE ) ) ) {
     return false;
   }
+
   parse_mode_ = PARSE_MODE_START;
+
   return true;
 }
 
@@ -1089,13 +994,13 @@ bool parser_type::parse_char( char c )
 	      break;
 	    }
 	    
-	    // TODO. scoping
 	    auto iter = symbol_table_.back().find( last_token.text );
 	    if ( iter != symbol_table_.back().end() ) {
 	      std::cout << "ERROR: symbol already defined\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	      break;
 	    }
+	    // TODO. add warning if this shadows another symbol?
 
 	    // TODO. always add doubles on 8-byte boundary,
 	    // always add int32's on 4-byte boundary
@@ -1144,7 +1049,7 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
 	    }
 	    else {
-	      // TODO. distinguish between copy-to-absolute (for globals)
+	      // distinguish between copy-to-absolute (for globals)
 	      //  vs copy-to-stack (for stack-local)
 	      //
 	      if ( symbol_table_.size() == 1 ) {
@@ -1177,6 +1082,13 @@ bool parser_type::parse_char( char c )
 
 	case GRAMMAR_MODE_BRANCH_EXPRESSION:
 	  if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
+
+	    if ( parse_mode_ == PARSE_MODE_START ) {
+	      std::cerr << "ERROR: empty if () expression\n";
+	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+	      break;
+	    }
+
 	    if ( !statement_parser_finalize_() ) {
 	      std::cerr << "ERROR(1): parse error on character " << c << "\n";
 	      grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
@@ -1343,6 +1255,7 @@ bool parser_type::parse_char( char c )
 	  break;
 
 	case GRAMMAR_MODE_BRANCH_CLAUSE:
+	case GRAMMAR_MODE_DEFINE_FUNCTION_BODY:
 	  // TODO. do we need this as an enum?
 	  break;
 
@@ -1548,11 +1461,6 @@ bool parser_type::parse_char( char c )
       return false;
     }
 
-    // TODO. merge PARSE_MODE_START and PARSE_MODE_OPERAND_EXPECTED,
-    //  but need to maintain the below check, to prevent:
-    //   3 +
-    //  from being accepted
-    //
     if ( parse_mode_ != PARSE_MODE_START ) {
       std::cerr << "ERROR: parse not terminated correctly\n";
       return false;
