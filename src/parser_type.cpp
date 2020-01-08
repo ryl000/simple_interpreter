@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Ray Li
+ * Copyright 2019-2020 Ray Li
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -167,7 +167,7 @@ bool parser_type::anchor_jump_here_( size_t jump_idx )
   // TODO. add checks?
   // TODO. guard against invalid index?
   // TODO. guard against invalid offset calc?
-  statements_[ jump_idx ].jump_arg = statements_.size() - jump_idx;
+  statements_[ jump_idx ].arg.i32  = statements_.size() - jump_idx; // TODO. type mismatch
   return true;
 }
 
@@ -199,11 +199,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	      if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
 		if ( !(iter->second.is_abs) ) {
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
-		  statements_.back().offset_arg = iter->second.sfb_offset;
+		  statements_.back().arg.i32    = iter->second.sfb_offset;
 		}
 		else {
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
-		  statements_.back().addr_arg = iter->second.addr;
+		  statements_.back().arg.sz   = iter->second.addr;
 		}
 		parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
 		symbol_found = true;
@@ -218,7 +218,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 		  std::cout << "ERROR: nested functions not currently allowed\n";
 		  break;
 		}
-		new_fn.addr_arg = iter->second.addr;
+		new_fn.arg.sz   = iter->second.addr;
 		new_fn.symbol_data = &(iter->second);
 		update_stacks_with_operator_( new_fn );
 		parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
@@ -306,12 +306,12 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
 	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHSTACKOFFSET;
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
-	      statements_.back().ivalue = 0;
+	      statements_.back().arg.i32 = 0;
 	    }
 	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
 	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
-	      statements_.back().ivalue = 1;
+	      statements_.back().arg.i32 = 1;
 	    }
 	    else {
 	      parse_mode_ = PARSE_MODE_ERROR;
@@ -461,7 +461,7 @@ bool parser_type::update_stacks_with_operator_(
 	// reserve space on dstack for return value + args
 	size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-	statements_.back().jump_arg = stack_space;
+	statements_.back().arg.i32  = stack_space;
 	current_offset_from_stack_frame_base_.back() += stack_space;
 
 	// transfer any args from estack to dstack
@@ -469,21 +469,21 @@ bool parser_type::update_stacks_with_operator_(
 	  int32_t offset = -8;
 	  for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
-	    statements_.back().offset_arg = current_offset_from_stack_frame_base_.back() + offset;
+	    statements_.back().arg.i32    = current_offset_from_stack_frame_base_.back() + offset;
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
-	    statements_.back().pop_arg = 1U;
+	    statements_.back().arg.sz  = 1U;
 	  }
 	}
 	
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
 	
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
-	statements_.back().addr_arg = operator_stack_.back().addr_arg;
+	statements_.back().arg.sz   = operator_stack_.back().arg.sz;
 
 	// adjust stack to remove the args that were passed to the function
 	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
 	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-	  statements_.back().jump_arg = operator_stack_.back().symbol_data->fn_nargs * -8;
+	  statements_.back().arg.i32  = operator_stack_.back().symbol_data->fn_nargs * -8;
 	}
 
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
@@ -492,7 +492,7 @@ bool parser_type::update_stacks_with_operator_(
 	// TODO. allow for void returns!
 	//
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
-	statements_.back().offset_arg = ret_val_offset;
+	statements_.back().arg.i32    = ret_val_offset;
       }
       else {
 	statements_.emplace_back( operator_stack_.back() );
@@ -504,8 +504,8 @@ bool parser_type::update_stacks_with_operator_(
       if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_AND
 	   || operator_stack_.back().id == EVAL_ID_TYPE_OP_OR ) {
 	// TODO. check return value?
-	anchor_jump_here_( operator_stack_.back().jump_arg );
-	statements_.back().jump_arg = 0;
+	anchor_jump_here_( operator_stack_.back().linked_idx );
+	statements_.back().linked_idx = 0U; // clean up
       }
 
       operator_stack_.pop_back();
@@ -528,17 +528,17 @@ bool parser_type::update_stacks_with_operator_(
       operator_stack_.emplace_back( eval_data );
 
       // If && or ||, we need to add a JEQZ/JNEZ into the statements, to handle short-circuits
-      // NOTE that we are using the "jump arg" field in the && or || to
+      // NOTE that we are using the "linked_idx" field in the && or || to
       //  store the location of the associated JEQZ/JNEZ. This is faster than
       //  searching backwards at the time the && or || is pushed into the statements stack
       //
       if ( eval_id == EVAL_ID_TYPE_OP_AND ) {
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
-	operator_stack_.back().jump_arg = statements_.size() - 1U;
+	operator_stack_.back().linked_idx = statements_.size() - 1U;
       }
       else if ( eval_id == EVAL_ID_TYPE_OP_OR ) {
 	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JNEZ ) );
-	operator_stack_.back().jump_arg = statements_.size() - 1U;
+	operator_stack_.back().linked_idx = statements_.size() - 1U;
       }
 	
     }
@@ -967,7 +967,7 @@ bool parser_type::parse_char( char c )
 		//
 		if ( end_of_prev_block_new_variable_index > new_variable_index_.back() ) {
 		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-		  statements_.back().jump_arg = new_variable_index_.back() - end_of_prev_block_new_variable_index;
+		  statements_.back().arg.i32  = new_variable_index_.back() - end_of_prev_block_new_variable_index;
 		}
 	      }
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
@@ -1009,7 +1009,7 @@ bool parser_type::parse_char( char c )
 	    new_variable_index_.back() += 8U; // size of double
 
 	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
-	    statements_.back().jump_arg = 8; // size of double
+	    statements_.back().arg.i32  = 8; // size of double
 	    current_offset_from_stack_frame_base_.back() += 8U;
 
 	    symbol_table_data_type new_variable;
@@ -1054,11 +1054,11 @@ bool parser_type::parse_char( char c )
 	      //
 	      if ( symbol_table_.size() == 1 ) {
 		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
-		statements_.back().addr_arg = current_new_var_idx_.back();
+		statements_.back().arg.sz   = current_new_var_idx_.back();
 	      }
 	      else {
 		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
-		statements_.back().offset_arg = current_new_var_idx_.back();
+		statements_.back().arg.i32    = current_new_var_idx_.back();
 	      }
 	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
@@ -1121,10 +1121,10 @@ bool parser_type::parse_char( char c )
 	      int32_t offset = -24;
 	      offset -= (current_fn_iter_->second.fn_nargs * 8);
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
-	      statements_.back().offset_arg = offset;
+	      statements_.back().arg.i32    = offset;
 	      
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
-	      statements_.back().pop_arg = 1U;
+	      statements_.back().arg.sz  = 1U;
 
 	      // return
 	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
@@ -1190,7 +1190,7 @@ bool parser_type::parse_char( char c )
 		    // to go back to conditional check
 		    size_t new_jmp_idx = statements_.size();
 		    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
-		    statements_.back().jump_arg = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
+		    statements_.back().arg.i32  = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
 		    grammar_state_.rbegin()->loopback_offset = 0U;
 		  }
 
@@ -1489,41 +1489,41 @@ void print_statements( const std::vector<eval_data_type> &statement )
 	  ; iter != statement.end()
 	  ; ++iter, ++i ) {
     if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
-      std::cout << i << ": pushd " << iter->value << "\n";
+      std::cout << i << ": pushd " << iter->arg.d << "\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_PUSHI ) {
-      std::cout << i << ": pushi " << iter->ivalue << "\n";
+      std::cout << i << ": pushi " << iter->arg.i32 << "\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_POP ) {
-      std::cout << i << ": pop " << iter->pop_arg << "\n";
+      std::cout << i << ": pop " << iter->arg.sz << "\n";
     }
     else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
 	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
-	" " << iter->jump_arg <<
+	" " << iter->arg.i32 <<
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDR ||
 	      iter->id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
-	" " << iter->addr_arg <<
+	" " << iter->arg.sz <<
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ||
 	      iter->id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
-	" " << iter->offset_arg <<
+	" " << iter->arg.i32 <<
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_PUSHADDR ||
 	      iter->id == EVAL_ID_TYPE_OP_PUSHSTACKOFFSET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
-	" " << iter->addr_arg <<
+	" " << iter->arg.sz <<
 	"\n";
     }
     else if ( iter->id == EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
-	" " << iter->jump_arg <<
+	" " << iter->arg.i32 <<
 	"\n";
     }
     else {

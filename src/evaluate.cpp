@@ -1,5 +1,5 @@
  /*
- * Copyright 2019 Ray Li
+ * Copyright 2019-2020 Ray Li
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -93,25 +93,28 @@ bool evaluate(
     case EVAL_ID_TYPE_PUSHD:
       // PUSH-DOUBLE <dval>
       //  0, -0, +1
-      evaluation_stack.back().push_back( operand_data_type( iter->value ) );
+      evaluation_stack.back().push_back( operand_data_type( iter->arg.d ) );
       break;
 
+    // TODO. rename to PUSH-INT32
     case EVAL_ID_TYPE_PUSHI:
       // PUSH-INT <ival>
       //  0, -0, +1
-      evaluation_stack.back().push_back( operand_data_type( iter->ivalue ) );
+      evaluation_stack.back().push_back( operand_data_type( iter->arg.i32 ) );
       break;
 
+    // TODO. rename to PUSH-SIZET
     case EVAL_ID_TYPE_OP_PUSHADDR:
       // PUSH-ADDR <addr>
       //  0, -0, +1
-      evaluation_stack.back().push_back( operand_data_type( iter->addr_arg ) );
+      evaluation_stack.back().push_back( operand_data_type( iter->arg.sz ) );
       break;
 
+    // TODO. replace with PUSH-INT32
     case EVAL_ID_TYPE_OP_PUSHSTACKOFFSET:
       // PUSH-OFFSET <offset>
       //  0, -0, +1
-      evaluation_stack.back().push_back( operand_data_type( iter->offset_arg ) );
+      evaluation_stack.back().push_back( operand_data_type( iter->arg.i32 ) );
       break;
 
     case EVAL_ID_TYPE_OP_NOT:
@@ -408,11 +411,11 @@ bool evaluate(
       //  narg, -narg, +0
       {
 	std::cout << "debug: pop\n";
-	if ( evaluation_stack.back().size() < iter->pop_arg ) {
+	if ( evaluation_stack.back().size() < iter->arg.sz ) {
 	  return false;
 	}
 
-	for ( size_t i=0; i<iter->pop_arg; ++i ) {
+	for ( size_t i=0; i<iter->arg.sz; ++i ) {
 	  evaluation_stack.back().pop_back();
 	}
       }
@@ -429,7 +432,7 @@ bool evaluate(
 	double value = (evaluation_stack.back().rbegin())->value;
 
 	if ( value != 0.0 ) {
-	  iter_increment = iter->jump_arg;
+	  iter_increment = iter->arg.i32;
 	}
       }
       break;
@@ -444,7 +447,7 @@ bool evaluate(
 
 	double value = (evaluation_stack.back().rbegin())->value;
 	if ( value == 0.0 ) {
-	  iter_increment = iter->jump_arg;
+	  iter_increment = iter->arg.i32;
 	}
       }
       break;
@@ -460,7 +463,7 @@ bool evaluate(
 	double value = (evaluation_stack.back().rbegin())->value;
 
 	if ( value == 0.0 ) {
-	  iter_increment = iter->jump_arg;
+	  iter_increment = iter->arg.i32;
 	}
 	evaluation_stack.back().pop_back();
       }
@@ -470,7 +473,7 @@ bool evaluate(
       // OP-JMP <offset>
       //  0, -0, +0
       {
-	iter_increment = iter->jump_arg;
+	iter_increment = iter->arg.i32;
       }
       break;
 
@@ -478,7 +481,7 @@ bool evaluate(
       // OP-JMPA <addr>
       //  0, -0, +0
       {
-	instr_index   = iter->jump_arg; // TODO. type mismatch!
+	instr_index   = iter->arg.i32; // TODO. type mismatch!
 	jump_absolute = true;
       }
       break;
@@ -488,7 +491,7 @@ bool evaluate(
       //  0, -0, +1
       {
 	double new_value;
-	char *src = &(data[iter->addr_arg]);
+	char *src = &(data[iter->arg.sz]);
 	char *dst = reinterpret_cast<char*>( &new_value );
 	std::copy( src, src+8U, dst ); // TODO. variable-size copy
 
@@ -501,7 +504,7 @@ bool evaluate(
       //  0, -0, +1
       {
 	double new_value;
-	char *src = &(data[iter->offset_arg + stack_frame_base]);
+	char *src = &(data[iter->arg.i32 + stack_frame_base]);
 	char *dst = reinterpret_cast<char*>( &new_value );
 	std::copy( src, src+8U, dst ); // TODO. variable-size copy
 
@@ -520,7 +523,7 @@ bool evaluate(
 	double value = (evaluation_stack.back().rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &value );
-	std::copy( src, src+8U, &(data[iter->addr_arg]) ); // TODO. variable-size copy
+	std::copy( src, src+8U, &(data[iter->arg.sz]) ); // TODO. variable-size copy
       }
       break;
 
@@ -535,7 +538,7 @@ bool evaluate(
 	double value = (evaluation_stack.back().rbegin())->value;
 
 	char *src = reinterpret_cast<char*>( &value );
-	std::copy( src, src+8U, &(data[iter->offset_arg + stack_frame_base]) ); // TODO. variable-size copy
+	std::copy( src, src+8U, &(data[iter->arg.i32 + stack_frame_base]) ); // TODO. variable-size copy
       }
       break;
 
@@ -543,7 +546,7 @@ bool evaluate(
       // OP-MOVE-END-OF-STACK
       //  0, -0, +0
       {
-	size_t new_size = data.size() + iter->jump_arg;
+	size_t new_size = data.size() + iter->arg.i32;
 	data.resize( new_size );
       }
       break;
@@ -576,7 +579,7 @@ bool evaluate(
 
 	// jump to function start
 	//
-	instr_index   = iter->addr_arg;
+	instr_index   = iter->arg.sz;
 	std::cout << "jumping to " << instr_index << "\n";
 	jump_absolute = true;
       }

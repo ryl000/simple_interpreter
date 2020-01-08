@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Ray Li
+ * Copyright 2019-2020 Ray Li
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -96,45 +96,35 @@ enum eval_id_type {
 struct eval_data_type {
 
   explicit eval_data_type( double in_value )
-    :value( in_value )
-    ,ivalue( 0 )
-    ,id( EVAL_ID_TYPE_PUSHD )
-    ,addr_arg( 0U )
-    ,jump_arg( 0 )
-    ,offset_arg( 0 )
-    ,pop_arg( 0U )
+    :id( EVAL_ID_TYPE_PUSHD )
+    ,linked_idx( 0U )
     ,symbol_data( nullptr )
-  {}
+  {
+    arg.d = in_value;
+  }
 
   explicit eval_data_type( int in_ivalue )
-    :value( 0 )
-    ,ivalue( in_ivalue )
-    ,id( EVAL_ID_TYPE_PUSHI )
-    ,addr_arg( 0U )
-    ,jump_arg( 0 )
-    ,offset_arg( 0 )
-    ,pop_arg( 0U )
+    :id( EVAL_ID_TYPE_PUSHI )
+    ,linked_idx( 0U )
     ,symbol_data( nullptr )
-  {}
+  {
+    arg.i32 = in_ivalue;
+  }
 
   explicit eval_data_type( eval_id_type in_id )
-    :value( 0.0 )
-    ,ivalue( 0 )
-    ,id( in_id )
-    ,addr_arg( 0U )
-    ,jump_arg( 0 )
-    ,offset_arg( 0 )
-    ,pop_arg( 0U )
+    :id( in_id )
+    ,linked_idx( 0U )
     ,symbol_data( nullptr )
   {}
   
-  double              value;
-  int32_t             ivalue;
   eval_id_type        id;
-  size_t              addr_arg;
-  int32_t             jump_arg;  // TODO. handle 32-bit size_t by making this int16_t ?
-  int32_t             offset_arg;
-  size_t              pop_arg;
+  size_t              linked_idx;
+
+  union {
+    double  d;
+    int32_t i32;
+    size_t  sz;
+  } arg;
 
   const symbol_table_data_type *symbol_data;
 };
