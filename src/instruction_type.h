@@ -25,100 +25,99 @@
 #include "symbol_table_data_type.h"
 
 
-enum eval_id_type {
-  EVAL_ID_TYPE_PUSHD = 0
-  ,EVAL_ID_TYPE_PUSHI
+enum instruction_id_type {
+  INSTRUCTION_ID_TYPE_PUSHDOUBLE = 0
+  ,INSTRUCTION_ID_TYPE_PUSHINT32
+  ,INSTRUCTION_ID_TYPE_PUSHSIZET
   
-  ,EVAL_ID_TYPE_OP_NOT
-  ,EVAL_ID_TYPE_OP_NEGATE
+  ,INSTRUCTION_ID_TYPE_NOT
+  ,INSTRUCTION_ID_TYPE_NEGATE
   
-  ,EVAL_ID_TYPE_OP_LPARENS
-  ,EVAL_ID_TYPE_OP_RPARENS
+  ,INSTRUCTION_ID_TYPE_LPARENS
+  ,INSTRUCTION_ID_TYPE_RPARENS
 
-  ,EVAL_ID_TYPE_OP_FINALIZE
+  ,INSTRUCTION_ID_TYPE_FINALIZE
 
-  ,EVAL_ID_TYPE_OP_CLEAR
-  ,EVAL_ID_TYPE_OP_POP
-  ,EVAL_ID_TYPE_OP_JNEZ
-  ,EVAL_ID_TYPE_OP_JEQZ
-  ,EVAL_ID_TYPE_OP_JCEQZ
-  ,EVAL_ID_TYPE_OP_JMP
-  ,EVAL_ID_TYPE_OP_JMPA
+  ,INSTRUCTION_ID_TYPE_CLEAR
+  ,INSTRUCTION_ID_TYPE_POP
+  ,INSTRUCTION_ID_TYPE_JNEZ
+  ,INSTRUCTION_ID_TYPE_JEQZ
+  ,INSTRUCTION_ID_TYPE_JCEQZ
+  ,INSTRUCTION_ID_TYPE_JMP
+  ,INSTRUCTION_ID_TYPE_JMPA
 
   // TODO. we need several modes
   //  "absolute" address (for things like globals)
   //  relative to stack base frame
   //  relative to top-of-stack?
-  ,EVAL_ID_TYPE_OP_PUSHADDR
-  ,EVAL_ID_TYPE_OP_PUSHSTACKOFFSET
-  ,EVAL_ID_TYPE_OP_COPYTOADDR
-  ,EVAL_ID_TYPE_OP_COPYFROMADDR
-  ,EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET
-  ,EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET
+  ,INSTRUCTION_ID_TYPE_COPYTOADDR
+  ,INSTRUCTION_ID_TYPE_COPYFROMADDR
+  ,INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET
+  ,INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET
 
-  ,EVAL_ID_TYPE_OP_MOVE_END_OF_STACK
-  ,EVAL_ID_TYPE_OP_CALL
-  ,EVAL_ID_TYPE_OP_RETURN
+  ,INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK
+  ,INSTRUCTION_ID_TYPE_CALL
+  ,INSTRUCTION_ID_TYPE_RETURN
 
-  ,EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK
+  ,INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK
 
-  ,EVAL_ID_TYPE_OP_FN
+  ,INSTRUCTION_ID_TYPE_FN
 
   // NOTE: from this point down,
   //  it is assumed these enums match up
   //  with token_id_type
   //
-  ,EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD
+  ,INSTRUCTION_ID_TYPE_FIRST_DIRECT_TOKEN_ID
   
-  ,EVAL_ID_TYPE_OP_ADD = EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD
-  ,EVAL_ID_TYPE_OP_SUBTRACT
+  ,INSTRUCTION_ID_TYPE_ADD = INSTRUCTION_ID_TYPE_FIRST_DIRECT_TOKEN_ID
+  ,INSTRUCTION_ID_TYPE_SUBTRACT
 
-  ,EVAL_ID_TYPE_OP_DIVIDE
-  ,EVAL_ID_TYPE_OP_MULTIPLY
+  ,INSTRUCTION_ID_TYPE_DIVIDE
+  ,INSTRUCTION_ID_TYPE_MULTIPLY
   
-  ,EVAL_ID_TYPE_OP_EQ
-  ,EVAL_ID_TYPE_OP_NEQ
-  ,EVAL_ID_TYPE_OP_GE
-  ,EVAL_ID_TYPE_OP_GT
-  ,EVAL_ID_TYPE_OP_LE
-  ,EVAL_ID_TYPE_OP_LT
+  ,INSTRUCTION_ID_TYPE_EQ
+  ,INSTRUCTION_ID_TYPE_NEQ
+  ,INSTRUCTION_ID_TYPE_GE
+  ,INSTRUCTION_ID_TYPE_GT
+  ,INSTRUCTION_ID_TYPE_LE
+  ,INSTRUCTION_ID_TYPE_LT
   
-  ,EVAL_ID_TYPE_OP_AND
-  ,EVAL_ID_TYPE_OP_OR
+  ,INSTRUCTION_ID_TYPE_AND
+  ,INSTRUCTION_ID_TYPE_OR
   
-  ,EVAL_ID_TYPE_OP_COMMA
+  ,INSTRUCTION_ID_TYPE_COMMA
 
-  ,EVAL_ID_TYPE_OP_ASSIGN
+  ,INSTRUCTION_ID_TYPE_ASSIGN
 
 };
 
 
-struct eval_data_type {
+struct instruction_type {
 
-  explicit eval_data_type( double in_value )
-    :id( EVAL_ID_TYPE_PUSHD )
+  explicit instruction_type( double in_value )
+    :id( INSTRUCTION_ID_TYPE_PUSHDOUBLE )
     ,linked_idx( 0U )
     ,symbol_data( nullptr )
   {
     arg.d = in_value;
   }
 
-  explicit eval_data_type( int in_ivalue )
-    :id( EVAL_ID_TYPE_PUSHI )
+  explicit instruction_type( int in_ivalue )
+    :id( INSTRUCTION_ID_TYPE_PUSHINT32 )
     ,linked_idx( 0U )
     ,symbol_data( nullptr )
   {
     arg.i32 = in_ivalue;
   }
 
-  explicit eval_data_type( eval_id_type in_id )
+  explicit instruction_type( instruction_id_type in_id )
     :id( in_id )
     ,linked_idx( 0U )
     ,symbol_data( nullptr )
   {}
   
-  eval_id_type        id;
-  size_t              linked_idx;
+  instruction_id_type  id;
+  size_t               linked_idx;
 
   union {
     double  d;

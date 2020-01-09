@@ -30,7 +30,7 @@ namespace {
   enum operand_type {
     OPERAND_TYPE_DOUBLE
     ,OPERAND_TYPE_INT32
-    ,OPERAND_TYPE_ADDR
+    ,OPERAND_TYPE_SIZET
   };
   
   struct operand_data_type {
@@ -52,7 +52,7 @@ namespace {
       :value( 0. )
       ,ivalue( 0 )
       ,addr( in_addr )
-      ,type( OPERAND_TYPE_ADDR )
+      ,type( OPERAND_TYPE_SIZET )
     {}
 
     void set_value( double in_value )
@@ -71,7 +71,7 @@ namespace {
 
 
 bool evaluate(
-	      const std::vector<eval_data_type> &instructions
+	      const std::vector<instruction_type> &instructions
 	      ,std::vector<char>                 &data
 	      )
 {
@@ -85,39 +85,30 @@ bool evaluate(
     // TODO. make this int16_t for 32-bit?
     int32_t iter_increment = 1;
 
-    std::vector<eval_data_type>::const_iterator iter = instructions.begin() + instr_index;
+    std::vector<instruction_type>::const_iterator iter = instructions.begin() + instr_index;
 
     iter_increment = 1;
     
     switch ( iter->id ) {
-    case EVAL_ID_TYPE_PUSHD:
-      // PUSH-DOUBLE <dval>
+    case INSTRUCTION_ID_TYPE_PUSHDOUBLE:
+      // PUSH-DOUBLE <double>
       //  0, -0, +1
       evaluation_stack.back().push_back( operand_data_type( iter->arg.d ) );
       break;
 
-    // TODO. rename to PUSH-INT32
-    case EVAL_ID_TYPE_PUSHI:
-      // PUSH-INT <ival>
+    case INSTRUCTION_ID_TYPE_PUSHINT32:
+      // PUSH-INT32 <int32>
       //  0, -0, +1
       evaluation_stack.back().push_back( operand_data_type( iter->arg.i32 ) );
       break;
 
-    // TODO. rename to PUSH-SIZET
-    case EVAL_ID_TYPE_OP_PUSHADDR:
-      // PUSH-ADDR <addr>
+    case INSTRUCTION_ID_TYPE_PUSHSIZET:
+      // PUSH-SIZET <sizet>
       //  0, -0, +1
       evaluation_stack.back().push_back( operand_data_type( iter->arg.sz ) );
       break;
 
-    // TODO. replace with PUSH-INT32
-    case EVAL_ID_TYPE_OP_PUSHSTACKOFFSET:
-      // PUSH-OFFSET <offset>
-      //  0, -0, +1
-      evaluation_stack.back().push_back( operand_data_type( iter->arg.i32 ) );
-      break;
-
-    case EVAL_ID_TYPE_OP_NOT:
+    case INSTRUCTION_ID_TYPE_NOT:
       // OP-NOT
       //  1, -1, +1 
       {
@@ -131,7 +122,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_NEGATE:
+    case INSTRUCTION_ID_TYPE_NEGATE:
       // OP-NEGATE
       //  1, -1, +1
       {
@@ -145,7 +136,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_ADD:
+    case INSTRUCTION_ID_TYPE_ADD:
       // OP-ADD
       //  2, -2, +1
       {
@@ -162,7 +153,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_SUBTRACT:
+    case INSTRUCTION_ID_TYPE_SUBTRACT:
       // OP-SUB
       //  2, -2, +1
       {
@@ -180,7 +171,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_DIVIDE:
+    case INSTRUCTION_ID_TYPE_DIVIDE:
       // OP-DIV
       //  2, -2, +1
       {
@@ -201,7 +192,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_MULTIPLY:
+    case INSTRUCTION_ID_TYPE_MULTIPLY:
       // OP-MULT
       //  2, -2, +1
       {
@@ -218,7 +209,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_EQ:
+    case INSTRUCTION_ID_TYPE_EQ:
       // OP-EQ
       //  2, -2, +1
       {
@@ -235,7 +226,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_NEQ:
+    case INSTRUCTION_ID_TYPE_NEQ:
       // OP-NEQ
       //  2, -2, +1
       {
@@ -252,7 +243,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_GE:
+    case INSTRUCTION_ID_TYPE_GE:
       // OP-GE
       //  2, -2, +1
       {
@@ -269,7 +260,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_GT:
+    case INSTRUCTION_ID_TYPE_GT:
       // OP-GT
       //  2, -2, +1
       {
@@ -286,7 +277,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_LE:
+    case INSTRUCTION_ID_TYPE_LE:
       // OP-LE
       //  2, -2, +1
       {
@@ -303,7 +294,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_LT:
+    case INSTRUCTION_ID_TYPE_LT:
       // OP-LT
       //  2, -2, +1
       {
@@ -320,7 +311,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_AND:
+    case INSTRUCTION_ID_TYPE_AND:
       // OP-AND
       //  2, -2, +1
       {
@@ -341,7 +332,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_OR:
+    case INSTRUCTION_ID_TYPE_OR:
       // OP-OR
       //  2, -2, +1
       {
@@ -362,7 +353,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_ASSIGN:
+    case INSTRUCTION_ID_TYPE_ASSIGN:
       // OP-ASSIGN
       //  3, -3, +1
       {
@@ -378,11 +369,11 @@ bool evaluate(
 
 	if ( is_abs ) {
 	  size_t dst_idx = (evaluation_stack.back().rbegin() + 2U)->addr;
-	  std::copy( src, src+8U, &(data[dst_idx]) );
+	  std::copy( src, src+8U, &(data[dst_idx]) ); // TODO. variable type
 	}
 	else {
 	  int32_t dst_offset = (evaluation_stack.back().rbegin() + 2U)->ivalue;
-	  std::copy( src, src+8U, &(data[dst_offset + stack_frame_base]) );
+	  std::copy( src, src+8U, &(data[dst_offset + stack_frame_base]) ); // TODO. variable type
 	}
 
 	evaluation_stack.back().pop_back();
@@ -391,7 +382,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_CLEAR:
+    case INSTRUCTION_ID_TYPE_CLEAR:
       // OP-CLEAR
       //  clears estack
       {
@@ -406,7 +397,7 @@ bool evaluate(
       }
       break;
       
-    case EVAL_ID_TYPE_OP_POP:
+    case INSTRUCTION_ID_TYPE_POP:
       // OP-POP <narg>
       //  narg, -narg, +0
       {
@@ -421,7 +412,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JNEZ:
+    case INSTRUCTION_ID_TYPE_JNEZ:
       // OP-JNEZ <offset>
       //  1, -0, +0
       {
@@ -437,7 +428,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JEQZ:
+    case INSTRUCTION_ID_TYPE_JEQZ:
       // OP-JEQZ <offset>
       //  1, -0, +0
       {
@@ -452,7 +443,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JCEQZ:
+    case INSTRUCTION_ID_TYPE_JCEQZ:
       // OP-JCEQZ <offset>
       //  1, -1, +0
       {
@@ -469,7 +460,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JMP:
+    case INSTRUCTION_ID_TYPE_JMP:
       // OP-JMP <offset>
       //  0, -0, +0
       {
@@ -477,16 +468,16 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_JMPA:
+    case INSTRUCTION_ID_TYPE_JMPA:
       // OP-JMPA <addr>
       //  0, -0, +0
       {
-	instr_index   = iter->arg.i32; // TODO. type mismatch!
+	instr_index   = iter->arg.sz;
 	jump_absolute = true;
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYFROMADDR:
+    case INSTRUCTION_ID_TYPE_COPYFROMADDR:
       // OP-COPY-FROM-ADDR <addr>
       //  0, -0, +1
       {
@@ -499,7 +490,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET:
+    case INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET:
       // OP-COPY-FROM-OFFSET <offset>
       //  0, -0, +1
       {
@@ -512,7 +503,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYTOADDR:
+    case INSTRUCTION_ID_TYPE_COPYTOADDR:
       // OP-COPY-TO-ADDR <addr>
       //  1, -0, +0
       {
@@ -527,7 +518,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET:
+    case INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET:
       // OP-COPY-TO-STACK-OFFSET <offset>
       //  1, -0, +0
       {
@@ -542,7 +533,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_MOVE_END_OF_STACK:
+    case INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK:
       // OP-MOVE-END-OF-STACK
       //  0, -0, +0
       {
@@ -551,7 +542,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_CALL:
+    case INSTRUCTION_ID_TYPE_CALL:
       {
 	std::cout << "=====CALL=====\n";
 	std::cout << "current stack frame base is " << stack_frame_base << "\n";
@@ -585,7 +576,7 @@ bool evaluate(
       }
       break;
       
-    case EVAL_ID_TYPE_OP_RETURN:
+    case INSTRUCTION_ID_TYPE_RETURN:
       {
 	std::cout << "=====RETURN=====\n";
 	
@@ -608,7 +599,7 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK:
+    case INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK:
       // TODO.
       std::cout << "DEBUG: stack size is " << data.size() << "\n";
       {
@@ -619,11 +610,11 @@ bool evaluate(
       }
       break;
 
-    case EVAL_ID_TYPE_OP_COMMA:
-    case EVAL_ID_TYPE_OP_FINALIZE:
-    case EVAL_ID_TYPE_OP_FN:
-    case EVAL_ID_TYPE_OP_LPARENS:
-    case EVAL_ID_TYPE_OP_RPARENS:
+    case INSTRUCTION_ID_TYPE_COMMA:
+    case INSTRUCTION_ID_TYPE_FINALIZE:
+    case INSTRUCTION_ID_TYPE_FN:
+    case INSTRUCTION_ID_TYPE_LPARENS:
+    case INSTRUCTION_ID_TYPE_RPARENS:
       // NOTE. These should never occur...
       break;
     }

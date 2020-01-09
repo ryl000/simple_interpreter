@@ -75,11 +75,12 @@ namespace {
 
 
   
-  // NOTE: needs to match up with eval_id_type enum
+  // NOTE: needs to match up with instruction_id_type enum
   //
   const operator_data_type operator_data[] = {
-    { 0, "push double" }
-    ,{ 0, "push int" }
+    { 0, "push-double" }
+    ,{ 0, "push-int32" }
+    ,{ 0,  "push-sizet" }
 
     ,{ 10, "not" }
     ,{ 10, "negate" }
@@ -97,8 +98,6 @@ namespace {
     ,{ 0,  "jmp" }
     ,{ 0,  "jmp-absolute" }
 
-    ,{ 0,  "push-addr" }
-    ,{ 0,  "push-addr-stack" }
     ,{ 0,  "copy-to-addr" }
     ,{ 0,  "copy-from-addr" }
     ,{ 0,  "copy-to-stack-offset" }
@@ -198,11 +197,11 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	    if ( iter != st_iter->end() ) {
 	      if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
 		if ( !(iter->second.is_abs) ) {
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+		  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
 		  statements_.back().arg.i32    = iter->second.sfb_offset;
 		}
 		else {
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMADDR ) );
+		  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMADDR ) );
 		  statements_.back().arg.sz   = iter->second.addr;
 		}
 		parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
@@ -211,7 +210,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	      else {
 		// TODO. if this fn returns void, it cannot be part of
 		// a "compound" expression
-		eval_data_type new_fn( EVAL_ID_TYPE_OP_FN );
+		instruction_type new_fn( INSTRUCTION_ID_TYPE_FN );
 
 		// TODO. for now, only "absolute" addresses allowed
 		if ( !(iter->second.is_abs) ) {
@@ -240,10 +239,10 @@ bool parser_type::statement_parser_( const token_type &last_token )
 		  last_token.id == TOKEN_ID_TYPE_MINUS ||
 		  last_token.id == TOKEN_ID_TYPE_NOT ) {
 	  if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NEGATE ) );
+	    update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NEGATE ) );
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_NOT ) );
+	    update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NOT ) );
 	  }
 	  else {
 	    // Nothing needs to be done for unary +
@@ -251,7 +250,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  // stay in this parse mode
 	}
 	else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	  update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
+	  update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
 	  // stay in this parse mode
 	}
 #if 0
@@ -260,7 +259,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  //  i.e., xyz() is allowed, but
 	  //  3 + () should not be
 	  //
-	  if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
+	  if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
 	    parse_mode_ = PARSE_MODE_ERROR;
 	  }
 	  // stay in this parse mode
@@ -287,8 +286,8 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	   last_token.id == TOKEN_ID_TYPE_NEQ ||
 	   last_token.id == TOKEN_ID_TYPE_AND ||
 	   last_token.id == TOKEN_ID_TYPE_OR ) {
-	eval_id_type new_eval_id_type;
-	if ( !token_id_to_eval_id_( last_token.id, &new_eval_id_type ) ) {
+	instruction_id_type new_instruction_id_type;
+	if ( !token_id_to_instruction_id_( last_token.id, &new_instruction_id_type ) ) {
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
 	else {
@@ -300,17 +299,32 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	    // a push-addr/push-stack-offset, because the assign-op needs that addr
 	    // for the assignment
 	    //
+	    // the e-stack will look like this at the time of the assign:
+	    //   offset
+	    //   0
+	    //   value
+	    // or
+	    //   addr
+	    //   1
+	    //   value
+	    //
 	    if ( statements_.empty() ) {
 	      parse_mode_ = PARSE_MODE_ERROR;
 	    }
-	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
-	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHSTACKOFFSET;
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	    else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) {
+	      // NOTE: statements_.back().arg.i32 is assumed to have been set already.
+	      // convert instruction to push i32 onto estack
+	      statements_.back().id = INSTRUCTION_ID_TYPE_PUSHINT32;
+	      // The next arg pushed onto estack means "relative to stack frame base"
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
 	      statements_.back().arg.i32 = 0;
 	    }
-	    else if ( statements_.back().id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
-	      statements_.back().id = EVAL_ID_TYPE_OP_PUSHADDR;
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_PUSHI ) );
+	    else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMADDR ) {
+	      // NOTE: statements_.back().arg.sz is assumed to have been set already.
+	      // convert instruction to push sz onto estack
+	      statements_.back().id = INSTRUCTION_ID_TYPE_PUSHSIZET;
+	      // The next arg pushed onto estack means "absolute"
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
 	      statements_.back().arg.i32 = 1;
 	    }
 	    else {
@@ -319,7 +333,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	  }
 
 	  if ( parse_mode_ != PARSE_MODE_ERROR ) {
-	    if ( !update_stacks_with_operator_( eval_data_type( new_eval_id_type ) ) ) {
+	    if ( !update_stacks_with_operator_( instruction_type( new_instruction_id_type ) ) ) {
 	      parse_mode_ = PARSE_MODE_ERROR;
 	    }
 	    else {
@@ -329,7 +343,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
 	}
       }
       else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_RPARENS ) ) ) {
+	if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
 	  parse_mode_ = PARSE_MODE_ERROR;
 	}
       }
@@ -341,7 +355,7 @@ bool parser_type::statement_parser_( const token_type &last_token )
     
     case PARSE_MODE_FN_LPARENS_EXPECTED:
       if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-	update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_LPARENS ) );
+	update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
 	parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       }
       else {
@@ -368,7 +382,7 @@ bool parser_type::statement_parser_finalize_()
     return false;
   }
 
-  if ( !update_stacks_with_operator_( eval_data_type( EVAL_ID_TYPE_OP_FINALIZE ) ) ) {
+  if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_FINALIZE ) ) ) {
     return false;
   }
 
@@ -378,15 +392,15 @@ bool parser_type::statement_parser_finalize_()
 }
 
 
-bool parser_type::token_id_to_eval_id_(
+bool parser_type::token_id_to_instruction_id_(
 				       token_id_type token_id
-				       ,eval_id_type *eval_id
+				       ,instruction_id_type *instruction_id
 				       )
 {
   bool rv = false;
 
   if ( token_id >= TOKEN_ID_TYPE_PLUS ) {
-    *eval_id = static_cast<eval_id_type>( token_id + EVAL_ID_FIRST_DIRECT_TOKEN_TO_CMD - TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD );
+    *instruction_id = static_cast<instruction_id_type>( token_id + INSTRUCTION_ID_TYPE_FIRST_DIRECT_TOKEN_ID - TOKEN_ID_TYPE_FIRST_DIRECT_INSTRUCTION );
     rv = true;
   }
 
@@ -395,12 +409,12 @@ bool parser_type::token_id_to_eval_id_(
 
 
 bool parser_type::update_stacks_with_operator_(
-					       eval_data_type                       eval_data
+					       instruction_type                       eval_data
 					       )
 {
-  eval_id_type eval_id = eval_data.id;
+  instruction_id_type instruction_id = eval_data.id;
   
-  if ( eval_id == EVAL_ID_TYPE_OP_LPARENS ) {
+  if ( instruction_id == INSTRUCTION_ID_TYPE_LPARENS ) {
       
     lparens_.push_back( operator_stack_.size() );
       
@@ -409,12 +423,12 @@ bool parser_type::update_stacks_with_operator_(
 
     // For a closing parens, make sure parenthesis is balanced
     //
-    if ( (eval_id == EVAL_ID_TYPE_OP_RPARENS) && lparens_.empty() ) {
+    if ( (instruction_id == INSTRUCTION_ID_TYPE_RPARENS) && lparens_.empty() ) {
       return false;
     }
 
     // For finalize, make sure no un-matched left parens exist
-    else if ( (eval_id == EVAL_ID_TYPE_OP_FINALIZE) && !lparens_.empty() ) {
+    else if ( (instruction_id == INSTRUCTION_ID_TYPE_FINALIZE) && !lparens_.empty() ) {
       return false;
     }
 
@@ -427,7 +441,7 @@ bool parser_type::update_stacks_with_operator_(
       // For a closing parens, pop elements off operator stack until the
       //  matching opening parens is found
       //
-      if ( eval_id == EVAL_ID_TYPE_OP_RPARENS ) {
+      if ( instruction_id == INSTRUCTION_ID_TYPE_RPARENS ) {
 
 	if ( operator_stack_.size() == lparens_.back() ) {
 	  break;
@@ -445,12 +459,12 @@ bool parser_type::update_stacks_with_operator_(
 
 	// ...Or the topmost operator in the operator stack has a < precedence
 	//
-	if ( operator_data[ eval_id ].precedence >= operator_data[ operator_stack_.back().id ].precedence ) {
+	if ( operator_data[ instruction_id ].precedence >= operator_data[ operator_stack_.back().id ].precedence ) {
 	  break;
 	}
       }
 
-      if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_FN ) {
+      if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_FN ) {
 	// TODO. allow for void returns
 	size_t stack_space = 8U;
 
@@ -460,7 +474,7 @@ bool parser_type::update_stacks_with_operator_(
 
 	// reserve space on dstack for return value + args
 	size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
 	statements_.back().arg.i32  = stack_space;
 	current_offset_from_stack_frame_base_.back() += stack_space;
 
@@ -468,30 +482,30 @@ bool parser_type::update_stacks_with_operator_(
 	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
 	  int32_t offset = -8;
 	  for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
+	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
 	    statements_.back().arg.i32    = current_offset_from_stack_frame_base_.back() + offset;
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
+	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
 	    statements_.back().arg.sz  = 1U;
 	  }
 	}
 	
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 	
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_CALL ) );
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_CALL ) );
 	statements_.back().arg.sz   = operator_stack_.back().arg.sz;
 
 	// adjust stack to remove the args that were passed to the function
 	if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
-	  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
 	  statements_.back().arg.i32  = operator_stack_.back().symbol_data->fn_nargs * -8;
 	}
 
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
 	// transfer return value to estack
 	// TODO. allow for void returns!
 	//
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) );
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
 	statements_.back().arg.i32    = ret_val_offset;
       }
       else {
@@ -501,8 +515,8 @@ bool parser_type::update_stacks_with_operator_(
       // If && or || is pushed into the statements stack, we need to resolve any previously-pushed
       // JNEZ/JEQZ with the correct jump arg
       //
-      if ( operator_stack_.back().id == EVAL_ID_TYPE_OP_AND
-	   || operator_stack_.back().id == EVAL_ID_TYPE_OP_OR ) {
+      if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_AND
+	   || operator_stack_.back().id == INSTRUCTION_ID_TYPE_OR ) {
 	// TODO. check return value?
 	anchor_jump_here_( operator_stack_.back().linked_idx );
 	statements_.back().linked_idx = 0U; // clean up
@@ -516,14 +530,14 @@ bool parser_type::update_stacks_with_operator_(
     // If this was a closing parens, take care of the
     //  opening parens
     //
-    if ( eval_id == EVAL_ID_TYPE_OP_RPARENS ) {
+    if ( instruction_id == INSTRUCTION_ID_TYPE_RPARENS ) {
       lparens_.pop_back();
     }
 
     // Otherwise, if this is not a comma or "finalize", add it to the
     //  operator stack
     //
-    else if ( eval_id != EVAL_ID_TYPE_OP_COMMA && eval_id != EVAL_ID_TYPE_OP_FINALIZE ) {
+    else if ( instruction_id != INSTRUCTION_ID_TYPE_COMMA && instruction_id != INSTRUCTION_ID_TYPE_FINALIZE ) {
 	
       operator_stack_.emplace_back( eval_data );
 
@@ -532,12 +546,12 @@ bool parser_type::update_stacks_with_operator_(
       //  store the location of the associated JEQZ/JNEZ. This is faster than
       //  searching backwards at the time the && or || is pushed into the statements stack
       //
-      if ( eval_id == EVAL_ID_TYPE_OP_AND ) {
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JEQZ ) );
+      if ( instruction_id == INSTRUCTION_ID_TYPE_AND ) {
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JEQZ ) );
 	operator_stack_.back().linked_idx = statements_.size() - 1U;
       }
-      else if ( eval_id == EVAL_ID_TYPE_OP_OR ) {
-	statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JNEZ ) );
+      else if ( instruction_id == INSTRUCTION_ID_TYPE_OR ) {
+	statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JNEZ ) );
 	operator_stack_.back().linked_idx = statements_.size() - 1U;
       }
 	
@@ -901,7 +915,7 @@ bool parser_type::parse_char( char c )
 	      // past function contents
 	      //
 	      size_t new_jmp_idx = statements_.size();
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
 	      grammar_state_.back().jump_offset = new_jmp_idx;
 	    }
 	    else if ( std::strcmp( "return", last_token.text.c_str() ) == 0 ) {
@@ -966,7 +980,7 @@ bool parser_type::parse_char( char c )
 		// them off the d-stack
 		//
 		if ( end_of_prev_block_new_variable_index > new_variable_index_.back() ) {
-		  statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+		  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
 		  statements_.back().arg.i32  = new_variable_index_.back() - end_of_prev_block_new_variable_index;
 		}
 	      }
@@ -1008,7 +1022,7 @@ bool parser_type::parse_char( char c )
 	    current_new_var_idx_.back() = new_variable_index_.back();
 	    new_variable_index_.back() += 8U; // size of double
 
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) );
+	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
 	    statements_.back().arg.i32  = 8; // size of double
 	    current_offset_from_stack_frame_base_.back() += 8U;
 
@@ -1053,14 +1067,14 @@ bool parser_type::parse_char( char c )
 	      //  vs copy-to-stack (for stack-local)
 	      //
 	      if ( symbol_table_.size() == 1 ) {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOADDR ) );
+		statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOADDR ) );
 		statements_.back().arg.sz   = current_new_var_idx_.back();
 	      }
 	      else {
-		statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
+		statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
 		statements_.back().arg.i32    = current_new_var_idx_.back();
 	      }
-	      statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
+	      statements_.push_back( instruction_type( INSTRUCTION_ID_TYPE_CLEAR ) );
 	      grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
 	    }
 	  }
@@ -1099,7 +1113,7 @@ bool parser_type::parse_char( char c )
 	    // our stack-based evaluation?
 	    //
 	    grammar_state_.back().jump_offset = statements_.size();
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JCEQZ ) );
+	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JCEQZ ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
@@ -1120,14 +1134,14 @@ bool parser_type::parse_char( char c )
 	      // pop estack value and place in return location
 	      int32_t offset = -24;
 	      offset -= (current_fn_iter_->second.fn_nargs * 8);
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ) );
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
 	      statements_.back().arg.i32    = offset;
 	      
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_POP ) );
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
 	      statements_.back().arg.sz  = 1U;
 
 	      // return
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_RETURN ) );
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_RETURN ) );
 
 	      grammar_state_.back().return_mode = false;
 	    }
@@ -1138,7 +1152,7 @@ bool parser_type::parse_char( char c )
 	    // TODO. only do this if we actually pushed elements into statements_
 	    //  stack (versus previous "end")
 	    //
-	    statements_.push_back( eval_data_type( EVAL_ID_TYPE_OP_CLEAR ) );
+	    statements_.push_back( instruction_type( INSTRUCTION_ID_TYPE_CLEAR ) );
 	    
 	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
 	    reprocess = true;
@@ -1189,7 +1203,7 @@ bool parser_type::parse_char( char c )
 		    // Put an unconditional jmp at the end of the previous while clause,
 		    // to go back to conditional check
 		    size_t new_jmp_idx = statements_.size();
-		    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+		    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
 		    statements_.back().arg.i32  = grammar_state_.rbegin()->loopback_offset - new_jmp_idx;  // TODO. unsigned subtract!
 		    grammar_state_.rbegin()->loopback_offset = 0U;
 		  }
@@ -1220,7 +1234,7 @@ bool parser_type::parse_char( char c )
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME && ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) ) {
 	    // Put an unconditional jmp at the end of the previous if clause
 	    size_t new_jmp_idx = statements_.size();
-	    statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_JMP ) );
+	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
 
 	    // Fix-up the jump from the if expression
 	    // TODO. check return value?
@@ -1411,7 +1425,7 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	      ++curly_braces_;
 	      
-	      statements_.emplace_back( eval_data_type( EVAL_ID_TYPE_OP_DEBUG_PRINT_STACK ) );
+	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
 	      // NOTE: symbol table/variable setup is in FUNCTION_NAME state
 	      //
@@ -1482,46 +1496,45 @@ bool parser_type::parse_char( char c )
 }
 
 
-void print_statements( const std::vector<eval_data_type> &statement )
+void print_statements( const std::vector<instruction_type> &statement )
 {
   size_t i = 0U;
-  for ( std::vector<eval_data_type>::const_iterator iter( statement.begin() )
+  for ( std::vector<instruction_type>::const_iterator iter( statement.begin() )
 	  ; iter != statement.end()
 	  ; ++iter, ++i ) {
-    if ( iter->id == EVAL_ID_TYPE_PUSHD ) {
-      std::cout << i << ": pushd " << iter->arg.d << "\n";
+    if ( iter->id == INSTRUCTION_ID_TYPE_PUSHDOUBLE ) {
+      std::cout << i << ": push-double " << iter->arg.d << "\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_PUSHI ) {
-      std::cout << i << ": pushi " << iter->arg.i32 << "\n";
+    else if ( iter->id == INSTRUCTION_ID_TYPE_PUSHINT32 ) {
+      std::cout << i << ": push-int32 " << iter->arg.i32 << "\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_POP ) {
+    else if ( iter->id == INSTRUCTION_ID_TYPE_POP ) {
       std::cout << i << ": pop " << iter->arg.sz << "\n";
     }
-    else if ( iter->id >= EVAL_ID_TYPE_OP_JNEZ &&
-	      iter->id <= EVAL_ID_TYPE_OP_JMP ) {
+    else if ( iter->id >= INSTRUCTION_ID_TYPE_JNEZ &&
+	      iter->id <= INSTRUCTION_ID_TYPE_JMP ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->arg.i32 <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOADDR ||
-	      iter->id == EVAL_ID_TYPE_OP_COPYFROMADDR ) {
+    else if ( iter->id == INSTRUCTION_ID_TYPE_COPYTOADDR ||
+	      iter->id == INSTRUCTION_ID_TYPE_COPYFROMADDR ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->arg.sz <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_COPYTOSTACKOFFSET ||
-	      iter->id == EVAL_ID_TYPE_OP_COPYFROMSTACKOFFSET ) {
+    else if ( iter->id == INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ||
+	      iter->id == INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->arg.i32 <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_PUSHADDR ||
-	      iter->id == EVAL_ID_TYPE_OP_PUSHSTACKOFFSET ) {
+    else if ( iter->id == INSTRUCTION_ID_TYPE_PUSHSIZET ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->arg.sz <<
 	"\n";
     }
-    else if ( iter->id == EVAL_ID_TYPE_OP_MOVE_END_OF_STACK ) {
+    else if ( iter->id == INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) {
       std::cout << i << ": " << operator_data[ iter->id ].text <<
 	" " << iter->arg.i32 <<
 	"\n";

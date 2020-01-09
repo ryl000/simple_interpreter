@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-#include "eval_data_type.h"
+#include "instruction_type.h"
 #include "symbol_table_data_type.h"
 
 
@@ -61,7 +61,7 @@ class parser_type {
 
   size_t data_size() { return new_variable_index_.front(); }
 
-  const std::vector<eval_data_type> &statements() { return statements_; }
+  const std::vector<instruction_type> &statements() { return statements_; }
 
   
  private:
@@ -72,9 +72,9 @@ class parser_type {
     ,GRAMMAR_MODE_DEFINE_VARIABLE
     ,GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT
     ,GRAMMAR_MODE_CHECK_FOR_ASSIGN
-    ,GRAMMAR_MODE_BRANCH_CLAUSE        // TODO. replace with more generic "branching" clause?
-    ,GRAMMAR_MODE_BRANCH_EXPRESSION    // TODO. replace with more generic "branching" expression?
-    ,GRAMMAR_MODE_BRANCH_STATEMENT     // TODO. replace with more generic "branching" statement?
+    ,GRAMMAR_MODE_BRANCH_CLAUSE
+    ,GRAMMAR_MODE_BRANCH_EXPRESSION
+    ,GRAMMAR_MODE_BRANCH_STATEMENT
     ,GRAMMAR_MODE_ELSE_CHECK
     ,GRAMMAR_MODE_STATEMENT
     ,GRAMMAR_MODE_DEFINE_FUNCTION_START
@@ -144,9 +144,9 @@ class parser_type {
     //  it is assumed these enums match up
     //  with eval_id_type.
     //
-    ,TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD
+    ,TOKEN_ID_TYPE_FIRST_DIRECT_INSTRUCTION
     
-    ,TOKEN_ID_TYPE_PLUS = TOKEN_ID_FIRST_DIRECT_TOKEN_TO_CMD
+    ,TOKEN_ID_TYPE_PLUS = TOKEN_ID_TYPE_FIRST_DIRECT_INSTRUCTION
     ,TOKEN_ID_TYPE_MINUS
 
     ,TOKEN_ID_TYPE_DIVIDE
@@ -227,20 +227,20 @@ class parser_type {
 
   bool statement_parser_finalize_();
   
-  bool token_id_to_eval_id_(
-			    token_id_type token_id
-			    ,eval_id_type *eval_id
-			    );
+  bool token_id_to_instruction_id_(
+				   token_id_type token_id
+				   ,instruction_id_type *instruction_id
+				   );
 
   
   bool update_stacks_with_operator_(
-				    eval_data_type                       eval_data
+				    instruction_type                       eval_data
 				   );
 
   std::string                                                current_token_;
-  std::vector<eval_data_type>                                statements_;
+  std::vector<instruction_type>                              statements_;
   std::vector<size_t>                                        lparens_; // TODO. convert this to a deque?
-  std::vector<eval_data_type>                                operator_stack_; // TODO. convert this to a deque?
+  std::vector<instruction_type>                              operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                                    tokens_;
   std::vector<grammar_state_type>                            grammar_state_;
   
@@ -261,5 +261,5 @@ class parser_type {
 };
 
 
-void print_statements( const std::vector<eval_data_type> &statement );
+void print_statements( const std::vector<instruction_type> &statement );
 

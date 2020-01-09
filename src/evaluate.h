@@ -26,10 +26,10 @@
 #include <string>
 #include <vector>
 
-#include "eval_data_type.h"
+#include "instruction_type.h"
 
 
 bool evaluate(
-	      const std::vector<eval_data_type> &instructions
+	      const std::vector<instruction_type> &instructions
 	      ,std::vector<char>                 &data
 	      );
