@@ -518,6 +518,7 @@ bool parser_type::update_stacks_with_operator_(
       if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_AND
 	   || operator_stack_.back().id == INSTRUCTION_ID_TYPE_OR ) {
 	// TODO. check return value?
+	// ASSERT. linked_idx is non-zero
 	anchor_jump_here_( operator_stack_.back().linked_idx );
 	statements_.back().linked_idx = 0U; // clean up
       }
@@ -1243,8 +1244,9 @@ bool parser_type::parse_char( char c )
 		  //  Fix-up the jump that was placed before the function
 		  //    definition, so we jump past the function definition
 		  //
+		  // ASSERT: jump_offset is non-zero
 		  anchor_jump_here_( grammar_state_.back().jump_offset );
-		  grammar_state_.back().jump_offset = 0U;
+		  grammar_state_.back().jump_offset = 0U; // TODO. is this a valid "not set" value??
 		}
 		else {
 
@@ -1259,8 +1261,12 @@ bool parser_type::parse_char( char c )
 
 		  if ( (grammar_state_.rbegin())->branching_mode != BRANCHING_MODE_IF ) {
 		    // TODO. check return value?
-		    anchor_jump_here_( grammar_state_.back().jump_offset );
-		    grammar_state_.back().jump_offset = 0U;
+		    if ( grammar_state_.back().jump_offset != 0 ) {
+		      anchor_jump_here_( grammar_state_.back().jump_offset );
+		      grammar_state_.back().jump_offset = 0U; // TODO. is this a valid "not set" value?
+		      // TODO: because of the anchor jump, we are "live" again,
+		      //  if we are tracking return
+		    }
 		  }
 		  else {
 		    grammar_state_.back().mode = GRAMMAR_MODE_ELSE_CHECK;
@@ -1282,15 +1288,34 @@ bool parser_type::parse_char( char c )
 	case GRAMMAR_MODE_ELSE_CHECK:
 	  if ( last_token.id == TOKEN_ID_TYPE_NAME && ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) ) {
 	    // Put an unconditional jmp at the end of the previous if clause
-	    size_t new_jmp_idx = statements_.size();
+	    // BUT if the previous if clause ended with a return, don't bother
+	    //
+	    size_t new_jmp_idx = 0; // TODO. is this a good "invalid" value?
+
+	    // TODO. check to see if previous if clause ended with a return.
+	    //  If it did, don't do the following commands
+	    //
+	    new_jmp_idx = statements_.size();
 	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
 
 	    // Fix-up the jump from the if expression
 	    // TODO. check return value?
+	    // ASSERT. this should always be non-zero, because
+	    // the beginning "if" will always need to have some
+	    // sort of jump if the conditional is false
+	    //
 	    anchor_jump_here_( grammar_state_.back().jump_offset );
+	    grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
+	    // TODO: because of the anchor jump, we are "live" again,
+	    //  if we are tracking return
 
 	    // Save this new jmp to fix later
-	    grammar_state_.back().jump_offset = new_jmp_idx;
+	    // BUT if the previous if clause ended with a return, don't bother.
+	    // instead, set jump_offset to "invalid" (0?)
+	    //
+	    if ( new_jmp_idx ) {
+	      grammar_state_.back().jump_offset = new_jmp_idx;
+	    }
 	    
 	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
 	    grammar_state_.back().branching_mode = BRANCHING_MODE_ELSE;
@@ -1298,7 +1323,14 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
+	    // ASSERT. this should always be non-zero, because
+	    // the beginning "if" will always need to have some
+	    // sort of jump if the conditional is false
+	    //
 	    anchor_jump_here_( grammar_state_.back().jump_offset );
+	    grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
+	    // TODO: because of the anchor jump, we are "live" again,
+	    //  if we are tracking return
 	    
 	    // "unwind" if/else as applicable
 	    //
@@ -1310,7 +1342,12 @@ bool parser_type::parse_char( char c )
 	      grammar_state_.pop_back();
 
 	      // TODO. check return value?
-	      anchor_jump_here_( grammar_state_.back().jump_offset );
+	      if ( grammar_state_.back().jump_offset ) {
+		anchor_jump_here_( grammar_state_.back().jump_offset );
+		grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
+		// TODO: because of the anchor jump, we are "live" again,
+		//  if we are tracking return
+	      }
 	    }
 
 	    grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
