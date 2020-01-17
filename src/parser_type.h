@@ -40,6 +40,7 @@ class parser_type {
     ,operator_stack_()
     ,tokens_()
     ,grammar_state_()
+    ,function_parse_state_()
     ,symbol_table_( 1U )
     ,current_new_var_idx_( 1U )
     ,new_variable_index_( 1U )
@@ -183,6 +184,7 @@ class parser_type {
     size_t               loopback_offset;
     branching_mode_type  branching_mode;
     bool                 return_mode;
+    bool                 unreachable_code;
 
     grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
       :block_depth( in_block_depth )
@@ -191,10 +193,20 @@ class parser_type {
       ,loopback_offset( 0U )
       ,branching_mode( BRANCHING_MODE_IF )
       ,return_mode( false )
+      ,unreachable_code( false )
     {}
   };
 
 
+  struct function_parse_state_type {
+    bool code_path_inactive;
+
+    function_parse_state_type()
+      :code_path_inactive( false )
+    {}
+  };
+
+  
   struct token_type {
     explicit token_type( token_id_type in_id )
       :text()
@@ -243,6 +255,7 @@ class parser_type {
   std::vector<instruction_type>                              operator_stack_; // TODO. convert this to a deque?
   std::vector<token_type>                                    tokens_;
   std::vector<grammar_state_type>                            grammar_state_;
+  std::vector<function_parse_state_type>                     function_parse_state_;
   
   std::vector<std::map<std::string,symbol_table_data_type>>  symbol_table_;
   std::vector<size_t>                                        current_new_var_idx_;

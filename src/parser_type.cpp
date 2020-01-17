@@ -920,6 +920,13 @@ bool parser_type::parse_char( char c )
 	    }
 	    else if ( std::strcmp( "return", last_token.text.c_str() ) == 0 ) {
 	      // TODO. only allow inside a function
+	      // TODO. we need to track any code lines after a return,
+	      //  within the same block depth (they represent unreachable code)
+	      // TODO. if this function returns something, make sure the
+	      //  return is followed by an expression. if this function
+	      //  does not return something, make sure the return is NOT
+	      //  followed by something
+	      //
 	      grammar_state_.back().return_mode = true;
 	      grammar_state_.back().mode        = GRAMMAR_MODE_STATEMENT;
 	    }
@@ -958,13 +965,22 @@ bool parser_type::parse_char( char c )
 	      size_t prev = current_new_var_idx_.back();
 	      current_new_var_idx_.push_back( prev );
 	    }
+	    else {
+	      // TODO. this should never happen
+	    }
 	    if ( !new_variable_index_.empty() ) {
 	      size_t prev = new_variable_index_.back();
 	      new_variable_index_.push_back( prev );
 	    }
+	    else {
+	      // TODO. this should never happen
+	    }
 	    if ( !current_offset_from_stack_frame_base_.empty() ) {
 	      size_t prev = current_offset_from_stack_frame_base_.back();
 	      current_offset_from_stack_frame_base_.push_back( prev );
+	    }
+	    else {
+	      // TODO. this should never happen
 	    }
 	  }
 	  else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
@@ -1115,6 +1131,7 @@ bool parser_type::parse_char( char c )
 	    grammar_state_.back().jump_offset = statements_.size();
 	    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JCEQZ ) );
 	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
+	    // TODO. new grammar state must inherit "unreachable" status of current one
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else if ( !statement_parser_( last_token ) ) {
@@ -1131,19 +1148,31 @@ bool parser_type::parse_char( char c )
 	    }
 
 	    if ( grammar_state_.back().return_mode ) {
-	      // pop estack value and place in return location
+	      // TODO. only do this if we are supposed to return something
+	      //
+	      // copy top estack value into return location ..
+	      //
+	      // NOTE: 8 for return contents, 8 for return address, 8 for old stack frame addr -> 24
 	      int32_t offset = -24;
 	      offset -= (current_fn_iter_->second.fn_nargs * 8);
 	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
 	      statements_.back().arg.i32    = offset;
-	      
+	      // .. and pop top estack value
+	      //
 	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
 	      statements_.back().arg.sz  = 1U;
 
 	      // return
+	      //
 	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_RETURN ) );
 
-	      grammar_state_.back().return_mode = false;
+	      grammar_state_.back().return_mode      = false;
+	      // from this point on, any code encountered is unreachable,
+	      // until this "grammar_state" is popped off the stack. This
+	      // mode is "inherited" by all grammar states pushed onto the stack
+	      // from this point forward
+	      //
+	      grammar_state_.back().unreachable_code = true;
 	    }
 	    // for semi-colon, we need to add an explicit command to clear the
 	    //  evaluation stack. Might want to add size checking...
@@ -1190,6 +1219,26 @@ bool parser_type::parse_char( char c )
 		  // All "terminating" code paths must end in a return x (if function
 		  // does not return void)
 		  //
+
+		  // TODO. ASSERT: function_parse_state_ not empty
+
+		  // TODO. still need to figure out when to
+		  //  set code_path_inactive to false. It's
+		  //  done in the function_parse_state_type's
+		  //  constructor, but when the first return
+		  //  is seen, it will be set to true. At that
+		  //  point, it needs to be reset back to false
+		  //  once unreachable_code reverts back to false, AND
+		  //  a statement is found
+		  //
+		  if ( !function_parse_state_.back().code_path_inactive ) {
+		    // execution flow may reach here, so:
+		    //  a) for void functions, add an implied return
+		    //  b) for non-void functions, error because we are
+		    //     missing a required return
+		  }
+		  
+		  function_parse_state_.pop_back();
 		  
 		  //  Fix-up the jump that was placed before the function
 		  //    definition, so we jump past the function definition
@@ -1245,6 +1294,7 @@ bool parser_type::parse_char( char c )
 	    
 	    grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
 	    grammar_state_.back().branching_mode = BRANCHING_MODE_ELSE;
+	    // TODO. new grammar state must inherit "unreachable" status of current one
 	    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	  }
 	  else {
@@ -1422,8 +1472,11 @@ bool parser_type::parse_char( char c )
 	  
 	    if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
 	      grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
+	      // TODO. new grammar state must inherit "unreachable" status of current one
 	      grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
 	      ++curly_braces_;
+
+	      function_parse_state_.emplace_back( function_parse_state_type() );
 	      
 	      statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
