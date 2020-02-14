@@ -23,6 +23,7 @@
 #pragma once
 
 #include <cstring>
+#include <deque>
 #include <map>
 #include <string>
 #include <vector>
@@ -240,14 +241,14 @@ class parser_type {
   bool statement_parser_finalize_();
   
   bool token_id_to_instruction_id_(
-				   token_id_type token_id
-				   ,instruction_id_type *instruction_id
-				   );
+                                   token_id_type token_id
+                                   ,instruction_id_type *instruction_id
+                                   );
 
   
   bool update_stacks_with_operator_(
-				    instruction_type                       eval_data
-				   );
+                                    instruction_type                       eval_data
+                                   );
 
   std::string                                                current_token_;
   std::vector<instruction_type>                              statements_;
@@ -257,7 +258,7 @@ class parser_type {
   std::vector<grammar_state_type>                            grammar_state_;
   std::vector<function_parse_state_type>                     function_parse_state_;
   
-  std::vector<std::map<std::string,symbol_table_data_type>>  symbol_table_;
+  std::deque<std::map<std::string,symbol_table_data_type>>   symbol_table_;
   std::vector<size_t>                                        current_new_var_idx_;
   std::vector<size_t>                                        new_variable_index_;
   std::vector<size_t>                                        current_offset_from_stack_frame_base_;
