@@ -1,3 +1,11 @@
+**/.vs
+**/Win32/Debug
+**/Win32/Release
+**/x64/Debug
+**/x64/Release
+*.exe
 *.o
-sinterp
+*.obj
+*.out
+*.pdb
 *~
