@@ -53,7 +53,7 @@ class parser_type {
     ,lex_mode_( LEX_MODE_START )
     ,parse_mode_( PARSE_MODE_START )
   {
-    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+    grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, false ) );
     current_new_var_idx_[0] = 0U;
     new_variable_index_[0] = 0U;
     current_offset_from_stack_frame_base_[0] = 0U;
@@ -187,23 +187,25 @@ class parser_type {
     bool                 return_mode;
     bool                 unreachable_code;
 
-    grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth )
+    grammar_state_type( grammar_mode_type in_mode, size_t in_block_depth, bool in_unreachable_code )
       :block_depth( in_block_depth )
       ,mode( in_mode )
       ,jump_offset( 0U )
       ,loopback_offset( 0U )
       ,branching_mode( BRANCHING_MODE_IF )
       ,return_mode( false )
-      ,unreachable_code( false )
+      ,unreachable_code( in_unreachable_code )
     {}
   };
 
 
   struct function_parse_state_type {
-    bool code_path_inactive;
+    size_t return_size;
+    bool   code_path_inactive;
 
     function_parse_state_type()
-      :code_path_inactive( false )
+      :return_size( 8U ) /* TODO. allow int, void returns */
+      ,code_path_inactive( false )
     {}
   };
 
@@ -276,4 +278,3 @@ class parser_type {
 
 
 void print_statements( const std::vector<instruction_type> &statement );
-

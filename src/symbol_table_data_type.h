@@ -31,6 +31,7 @@ struct symbol_table_data_type {
   symbol_table_data_type()
     :addr( 0U )
     ,fn_nargs( 0U )
+    ,fn_ret_size( 0U )
     ,sfb_offset( 0 )
     ,is_abs( false )
     ,type( SYMBOL_TYPE_VARIABLE )
@@ -38,6 +39,7 @@ struct symbol_table_data_type {
 
   size_t      addr;
   size_t      fn_nargs;
+  size_t      fn_ret_size;
   int32_t     sfb_offset;
   bool        is_abs;
   symbol_type type;

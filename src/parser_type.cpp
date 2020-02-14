@@ -465,20 +465,25 @@ bool parser_type::update_stacks_with_operator_(
       }
 
       if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_FN ) {
-        // TODO. allow for void returns
-        size_t stack_space = 8U;
 
+        size_t stack_space = 0;
+
+	size_t function_return_size = operator_stack_.back().symbol_data->fn_ret_size;
+
+	stack_space = function_return_size;
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           stack_space += (operator_stack_.back().symbol_data->fn_nargs * 8U);
         }
 
-        // reserve space on dstack for return value + args
+        // reserve space on dstack for return value (if any) + args
         size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
         statements_.back().arg.i32  = stack_space;
         current_offset_from_stack_frame_base_.back() += stack_space;
 
-        // transfer any args from estack to dstack
+        // transfer any args from estack to dstack. these
+        // are the function's arguments, passed in by the caller
+        //
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           int32_t offset = -8;
           for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
@@ -502,11 +507,12 @@ bool parser_type::update_stacks_with_operator_(
 
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
-        // transfer return value to estack
-        // TODO. allow for void returns!
+        // transfer return value to estack (if any)
         //
-        statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
-        statements_.back().arg.i32    = ret_val_offset;
+        if ( function_return_size ) {
+          statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
+          statements_.back().arg.i32    = ret_val_offset;
+        }
       }
       else {
         statements_.emplace_back( operator_stack_.back() );
@@ -920,7 +926,13 @@ bool parser_type::parse_char( char c )
               grammar_state_.back().jump_offset = new_jmp_idx;
             }
             else if ( std::strcmp( "return", last_token.text.c_str() ) == 0 ) {
-              // TODO. only allow inside a function
+              // only allow inside a function
+              //
+              if ( function_parse_state_.empty() ) {
+                grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+                break;
+              }
+
               // TODO. we need to track any code lines after a return,
               //  within the same block depth (they represent unreachable code)
               // TODO. if this function returns something, make sure the
@@ -962,27 +974,28 @@ bool parser_type::parse_char( char c )
             //   pop current_new_var_idx_
             //   pop new_variable_index_
             //
-            if ( !current_new_var_idx_.empty() ) {
-              size_t prev = current_new_var_idx_.back();
-              current_new_var_idx_.push_back( prev );
+
+            if ( current_new_var_idx_.empty() ) {
+              grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+              break;
             }
-            else {
-              // TODO. this should never happen
+
+            current_new_var_idx_.push_back( current_new_var_idx_.back() );
+
+            if ( new_variable_index_.empty() ) {
+              grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+              break;
             }
-            if ( !new_variable_index_.empty() ) {
-              size_t prev = new_variable_index_.back();
-              new_variable_index_.push_back( prev );
+
+            new_variable_index_.push_back( new_variable_index_.back() );
+
+            if ( current_offset_from_stack_frame_base_.empty() ) {
+              grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+              break;
             }
-            else {
-              // TODO. this should never happen
-            }
-            if ( !current_offset_from_stack_frame_base_.empty() ) {
-              size_t prev = current_offset_from_stack_frame_base_.back();
-              current_offset_from_stack_frame_base_.push_back( prev );
-            }
-            else {
-              // TODO. this should never happen
-            }
+
+            current_offset_from_stack_frame_base_.push_back( current_offset_from_stack_frame_base_.back() );
+
           }
           else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
             if ( curly_braces_ ) {
@@ -1132,8 +1145,7 @@ bool parser_type::parse_char( char c )
             grammar_state_.back().jump_offset = statements_.size();
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JCEQZ ) );
             grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
-            // TODO. new grammar state must inherit "unreachable" status of current one
-            grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+            grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, grammar_state_.back().unreachable_code ) );
           }
           else if ( !statement_parser_( last_token ) ) {
             std::cerr << "ERROR(2): parse error on character " << c << "\n";
@@ -1149,19 +1161,21 @@ bool parser_type::parse_char( char c )
             }
 
             if ( grammar_state_.back().return_mode ) {
-              // TODO. only do this if we are supposed to return something
+              // For non-void functions ..
               //
-              // copy top estack value into return location ..
-              //
-              // NOTE: 8 for return contents, 8 for return address, 8 for old stack frame addr -> 24
-              int32_t offset = -24;
-              offset -= (current_fn_iter_->second.fn_nargs * 8);
-              statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
-              statements_.back().arg.i32    = offset;
-              // .. and pop top estack value
-              //
-              statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
-              statements_.back().arg.sz  = 1U;
+              if ( function_parse_state_.back().return_size ) {
+                // copy top estack value into return location ..
+                //
+                // NOTE: 8 for return contents (if any), 8 for return address, 8 for old stack frame addr -> 24
+                int32_t offset = -(16 + static_cast<int>(function_parse_state_.back().return_size)); // TODO. size_t -> negative int!
+                offset -= (current_fn_iter_->second.fn_nargs * 8);
+                statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
+                statements_.back().arg.i32    = offset;
+                // .. and pop top estack value
+                //
+                statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
+                statements_.back().arg.sz  = 1U;
+              }
 
               // return
               //
@@ -1174,6 +1188,7 @@ bool parser_type::parse_char( char c )
               // from this point forward
               //
               grammar_state_.back().unreachable_code = true;
+              function_parse_state_.back().code_path_inactive = true;
             }
             // for semi-colon, we need to add an explicit command to clear the
             //  evaluation stack. Might want to add size checking...
@@ -1264,8 +1279,13 @@ bool parser_type::parse_char( char c )
                     if ( grammar_state_.back().jump_offset != 0 ) {
                       anchor_jump_here_( grammar_state_.back().jump_offset );
                       grammar_state_.back().jump_offset = 0U; // TODO. is this a valid "not set" value?
-                      // TODO: because of the anchor jump, we are "live" again,
-                      //  if we are tracking return
+                      if ( !function_parse_state_.empty() ) {
+                        // NOTE: because of the anchor jump, we are "live" again,
+                        //  if we are tracking return
+                        if ( !grammar_state_.back().unreachable_code ) {
+                          function_parse_state_.back().code_path_inactive = false;
+                        }
+                      }
                     }
                   }
                   else {
@@ -1287,16 +1307,16 @@ bool parser_type::parse_char( char c )
 
         case GRAMMAR_MODE_ELSE_CHECK:
           if ( last_token.id == TOKEN_ID_TYPE_NAME && ( std::strcmp( "else", last_token.text.c_str() ) == 0 ) ) {
-            // Put an unconditional jmp at the end of the previous if clause
-            // BUT if the previous if clause ended with a return, don't bother
-            //
+
             size_t new_jmp_idx = 0; // TODO. is this a good "invalid" value?
 
-            // TODO. check to see if previous if clause ended with a return.
-            //  If it did, don't do the following commands
+            // check to see if previous if clause ended with a return.
+            //  If it did, no need to add a terminating jmp to end-of-clause
             //
-            new_jmp_idx = statements_.size();
-            statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
+            if ( function_parse_state_.empty() || !function_parse_state_.back().code_path_inactive ) {
+              new_jmp_idx = statements_.size();
+              statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
+            }
 
             // Fix-up the jump from the if expression
             // TODO. check return value?
@@ -1306,8 +1326,11 @@ bool parser_type::parse_char( char c )
             //
             anchor_jump_here_( grammar_state_.back().jump_offset );
             grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
-            // TODO: because of the anchor jump, we are "live" again,
-            //  if we are tracking return
+            if ( !function_parse_state_.empty() && !grammar_state_.back().unreachable_code ) {
+              // NOTE: because of the anchor jump, we are "live" again,
+              //  if we are tracking return
+              function_parse_state_.back().code_path_inactive = false;
+            }
 
             // Save this new jmp to fix later
             // BUT if the previous if clause ended with a return, don't bother.
@@ -1319,8 +1342,7 @@ bool parser_type::parse_char( char c )
             
             grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
             grammar_state_.back().branching_mode = BRANCHING_MODE_ELSE;
-            // TODO. new grammar state must inherit "unreachable" status of current one
-            grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+            grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, grammar_state_.back().unreachable_code ) );
           }
           else {
             // ASSERT. this should always be non-zero, because
@@ -1329,8 +1351,11 @@ bool parser_type::parse_char( char c )
             //
             anchor_jump_here_( grammar_state_.back().jump_offset );
             grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
-            // TODO: because of the anchor jump, we are "live" again,
-            //  if we are tracking return
+            if ( !function_parse_state_.empty() && !grammar_state_.back().unreachable_code ) {
+              // NOTE: because of the anchor jump, we are "live" again,
+              //  if we are tracking return
+              function_parse_state_.back().code_path_inactive = false;
+            }
             
             // "unwind" if/else as applicable
             //
@@ -1345,8 +1370,11 @@ bool parser_type::parse_char( char c )
               if ( grammar_state_.back().jump_offset ) {
                 anchor_jump_here_( grammar_state_.back().jump_offset );
                 grammar_state_.back().jump_offset = 0; // TODO. is this a valid "not valid" value?
-                // TODO: because of the anchor jump, we are "live" again,
-                //  if we are tracking return
+                if ( !function_parse_state_.empty() && !grammar_state_.back().unreachable_code ) {
+                  // NOTE: because of the anchor jump, we are "live" again,
+                  //  if we are tracking return
+                  function_parse_state_.back().code_path_inactive = false;
+                }
               }
             }
 
@@ -1397,15 +1425,17 @@ bool parser_type::parse_char( char c )
               symbol_table_data_type new_function;
               // TODO. for now, functions always "absolute" adddresses
               //  Maybe later, we can have nested functions...
-              new_function.is_abs     = true;
-              new_function.addr       = statements_.size();
-              new_function.type       = SYMBOL_TYPE_FUNCTION;
-              new_function.fn_nargs   = 0U;
+              new_function.is_abs      = true;
+              new_function.addr        = statements_.size();
+              new_function.type        = SYMBOL_TYPE_FUNCTION;
+              new_function.fn_nargs    = 0U;
+	      new_function.fn_ret_size = 8U; // TODO. allow int, void returns
               // TODO. more efficient insert, using find_lower_bound
               auto rv = symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
               current_fn_iter_ = rv.first;
 
               symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
+              
               new_variable_index_.push_back( 0U );
               current_new_var_idx_.push_back( 0U );
               current_offset_from_stack_frame_base_.push_back( 0U );
@@ -1509,8 +1539,7 @@ bool parser_type::parse_char( char c )
           
             if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
               grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_BODY;
-              // TODO. new grammar state must inherit "unreachable" status of current one
-              grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_ ) );
+              grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, grammar_state_.back().unreachable_code ) );
               ++curly_braces_;
 
               function_parse_state_.emplace_back( function_parse_state_type() );
