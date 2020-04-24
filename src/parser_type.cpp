@@ -468,9 +468,9 @@ bool parser_type::update_stacks_with_operator_(
 
         size_t stack_space = 0;
 
-	size_t function_return_size = operator_stack_.back().symbol_data->fn_ret_size;
+        size_t function_return_size = operator_stack_.back().symbol_data->fn_ret_size;
 
-	stack_space = function_return_size;
+        stack_space = function_return_size;
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           stack_space += (operator_stack_.back().symbol_data->fn_nargs * 8U);
         }
@@ -695,6 +695,10 @@ bool parser_type::parse_char( char c )
         if ( std::isdigit( c ) ) {
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_FRACTION;
+        }
+        else if ( c == 'e' || c == 'E' ) {
+          current_token_ += c;
+          lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
         }
         else {
           lex_mode_ = LEX_MODE_ERROR;
@@ -1429,7 +1433,7 @@ bool parser_type::parse_char( char c )
               new_function.addr        = statements_.size();
               new_function.type        = SYMBOL_TYPE_FUNCTION;
               new_function.fn_nargs    = 0U;
-	      new_function.fn_ret_size = 8U; // TODO. allow int, void returns
+              new_function.fn_ret_size = 8U; // TODO. allow int, void returns
               // TODO. more efficient insert, using find_lower_bound
               auto rv = symbol_table_.back().insert( std::make_pair( last_token.text, new_function ) );
               current_fn_iter_ = rv.first;

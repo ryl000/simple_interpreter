@@ -67,7 +67,7 @@ int main( int argc, char* argv[] )
   if ( cmd_line_mode ) {
     size_t in_length = std::strlen( argv[iarg] );
     size_t i = 0U;
-    while ( i < in_length && (process_ok = parser.parse_char( argv[iarg][i] )) ) {
+    while ( i < in_length && ((process_ok = parser.parse_char( argv[iarg][i] ))) ) {
       ++i;
     }
   }
@@ -79,7 +79,7 @@ int main( int argc, char* argv[] )
     }
 
     char c;
-    while (infile.get(c) && (process_ok = parser.parse_char(c))) {
+    while (infile.get(c) && ((process_ok = parser.parse_char(c)))) {
       ;
     }
   }
