@@ -172,6 +172,7 @@ bool parser_type::anchor_jump_here_( size_t jump_idx )
 
 
 // TODO. need to add symbol_table_ as a parameter?
+
 bool parser_type::statement_parser_( const token_type &last_token )
 {
   bool reprocess = false;
@@ -181,21 +182,39 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
     switch ( parse_mode_ ) {
 
+    // TODO. can we merge this with operand-expected?
+    //
     case PARSE_MODE_START:
       parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
       reprocess   = true;
       break;
       
     case PARSE_MODE_OPERAND_EXPECTED:
+      // We are expecting an operand--a variable
+      //  name, a literal value, or a function
+      //  call site
+      //
       {
         if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	  // name found; look for it in the applicable
+	  //  symbol tables (starting from the local
+	  //  scope, then progressing to the scope
+	  //  enclosing the last table searched)
+	  //
           bool symbol_found = false;
           for ( auto st_iter = symbol_table_.rbegin()
                   ; !symbol_found && st_iter != symbol_table_.rend()
                   ; ++st_iter ) {
+
             auto iter = st_iter->find( last_token.text );
+
             if ( iter != st_iter->end() ) {
+
               if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
+		// The symbol is a variable; emit instructtion
+		//  to copy the value (from either the stack
+		//  offset or the global offset) onto the e-stack
+		//
                 if ( !(iter->second.is_abs) ) {
                   statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
                   statements_.back().arg.i32    = iter->second.sfb_offset;
@@ -204,12 +223,22 @@ bool parser_type::statement_parser_( const token_type &last_token )
                   statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMADDR ) );
                   statements_.back().arg.sz   = iter->second.addr;
                 }
+
+		// Next pass, we will be expecting an operator
+		//
                 parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+
                 symbol_found = true;
+
               }
               else {
+		// The symbol is a function; Update operator stack and
+		//  instructions as appropriate
+		//
+
                 // TODO. if this fn returns void, it cannot be part of
                 // a "compound" expression
+
                 instruction_type new_fn( INSTRUCTION_ID_TYPE_FN );
 
                 // TODO. for now, only "absolute" addresses allowed
@@ -217,10 +246,16 @@ bool parser_type::statement_parser_( const token_type &last_token )
                   std::cout << "ERROR: nested functions not currently allowed\n";
                   break;
                 }
+
                 new_fn.arg.sz   = iter->second.addr;
                 new_fn.symbol_data = &(iter->second);
+		// TODO. check return value?
                 update_stacks_with_operator_( new_fn );
+
+		// Next pass, we will be expecting an opening parens
+		//
                 parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
+
                 symbol_found = true;
               }
             }
@@ -230,27 +265,46 @@ bool parser_type::statement_parser_( const token_type &last_token )
             std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
             parse_mode_ = PARSE_MODE_ERROR;
           }
+
         }
         else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+	  // A literal was found. Emit instruction to load it into the e-stack
+	  //
+
           statements_.emplace_back( std::atof( last_token.text.c_str() ) );
           parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+
         }
         else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
                   last_token.id == TOKEN_ID_TYPE_MINUS ||
                   last_token.id == TOKEN_ID_TYPE_NOT ) {
-          if ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+	  // A unary operator was found. Update operator stack and
+	  //  instructions as appropriate
+	  //
+
+          if      ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+	    // TODO. check return value?
             update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NEGATE ) );
           }
           else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
+	    // TODO. check return value?
             update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NOT ) );
           }
           else {
             // Nothing needs to be done for unary +
           }
+
           // stay in this parse mode
+
         }
         else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+
+	  // An opening parenthesis was found. Update operator stack and
+	  //  instructions as appropriate
+	  //
+	  // TODO. check return value?
           update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
+
           // stay in this parse mode
         }
 #if 0
@@ -266,35 +320,45 @@ bool parser_type::statement_parser_( const token_type &last_token )
         }
 #endif
         else {
+
           parse_mode_ = PARSE_MODE_ERROR;
+
         }
       }
       break;
       
     case PARSE_MODE_OPERATOR_EXPECTED:
-      if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-           last_token.id == TOKEN_ID_TYPE_MINUS ||
-           last_token.id == TOKEN_ID_TYPE_DIVIDE ||
-           last_token.id == TOKEN_ID_TYPE_MULTIPLY ||
-           last_token.id == TOKEN_ID_TYPE_ASSIGN ||
-           last_token.id == TOKEN_ID_TYPE_COMMA ||
-           last_token.id == TOKEN_ID_TYPE_EQ ||
-           last_token.id == TOKEN_ID_TYPE_GE ||
-           last_token.id == TOKEN_ID_TYPE_GT ||
-           last_token.id == TOKEN_ID_TYPE_LE ||
-           last_token.id == TOKEN_ID_TYPE_LT ||
-           last_token.id == TOKEN_ID_TYPE_NEQ ||
-           last_token.id == TOKEN_ID_TYPE_AND ||
-           last_token.id == TOKEN_ID_TYPE_OR ) {
+      // We are expecting an operator
+      //
+
+      if ( last_token.id == TOKEN_ID_TYPE_PLUS
+        || last_token.id == TOKEN_ID_TYPE_MINUS
+        || last_token.id == TOKEN_ID_TYPE_DIVIDE
+        || last_token.id == TOKEN_ID_TYPE_MULTIPLY
+        || last_token.id == TOKEN_ID_TYPE_ASSIGN
+        || last_token.id == TOKEN_ID_TYPE_COMMA
+        || last_token.id == TOKEN_ID_TYPE_EQ
+        || last_token.id == TOKEN_ID_TYPE_GE
+        || last_token.id == TOKEN_ID_TYPE_GT
+        || last_token.id == TOKEN_ID_TYPE_LE
+        || last_token.id == TOKEN_ID_TYPE_LT
+        || last_token.id == TOKEN_ID_TYPE_NEQ
+        || last_token.id == TOKEN_ID_TYPE_AND
+	|| last_token.id == TOKEN_ID_TYPE_OR ) {
+	// A binary infix operator found
+	//
+
         instruction_id_type new_instruction_id_type;
         if ( !token_id_to_instruction_id_( last_token.id, &new_instruction_id_type ) ) {
+
           parse_mode_ = PARSE_MODE_ERROR;
+
         }
         else {
         
           if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
             // If we've come across an assignment token, the
-            // most recent statement must be a copyfromaddress/copyfromstackoffset
+            // most-recently emitted instruction must be a copyfromaddress/copyfromstackoffset
             // (i.e., a variable name). We will convert this to
             // a push-addr/push-stack-offset, because the assign-op needs that addr
             // for the assignment
@@ -303,35 +367,57 @@ bool parser_type::statement_parser_( const token_type &last_token )
             //   offset
             //   0
             //   value
+	    //  (top-of-e-stack)
             // or
             //   addr
             //   1
             //   value
+	    //  (top-of-estack)
             //
             if ( statements_.empty() ) {
+
               parse_mode_ = PARSE_MODE_ERROR;
+
             }
             else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) {
+
               // NOTE: statements_.back().arg.i32 is assumed to have been set already.
-              // convert instruction to push i32 onto estack
+              // convert most-recently emitted instruction into a "push i32 onto e-stack"
+	      //
               statements_.back().id = INSTRUCTION_ID_TYPE_PUSHINT32;
-              // The next arg pushed onto estack means "relative to stack frame base"
+
+	      // Emit an instruction to push a 0 onto the e-stack; this means
+	      //  "relative to stack frame base"
+	      //
               statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
               statements_.back().arg.i32 = 0;
+
             }
             else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMADDR ) {
+
               // NOTE: statements_.back().arg.sz is assumed to have been set already.
-              // convert instruction to push sz onto estack
+              // convert most-recently emitted instruction into a "push sz onto e-stack"
+	      //
               statements_.back().id = INSTRUCTION_ID_TYPE_PUSHSIZET;
-              // The next arg pushed onto estack means "absolute"
+
+	      // Emit an instruction to push a 1 onto the e-stack; this means
+	      //  "absolute"
+	      //
               statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
               statements_.back().arg.i32 = 1;
+
             }
             else {
+
               parse_mode_ = PARSE_MODE_ERROR;
+
             }
+
           }
 
+
+	  // Update operator stack and instructions as appropriate
+	  //
           if ( parse_mode_ != PARSE_MODE_ERROR ) {
             if ( !update_stacks_with_operator_( instruction_type( new_instruction_id_type ) ) ) {
               parse_mode_ = PARSE_MODE_ERROR;
@@ -341,31 +427,50 @@ bool parser_type::statement_parser_( const token_type &last_token )
             }
           }
         }
+
       }
       else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+	// A closing parenthesis was found. Update operator stack
+	// and instructions as appropriate
+	//
+
         if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
           parse_mode_ = PARSE_MODE_ERROR;
         }
+
       }
       else {
+
         parse_mode_ = PARSE_MODE_ERROR;
+
       }
       break;
 
     
     case PARSE_MODE_FN_LPARENS_EXPECTED:
+      // We are expecting an opening parenthesis (for a function
+      //  call site)
+      //
       if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+
+	// Update operator stack and instructions as appropriate
+	//
+	// TODO. check return value?
         update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
         parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+
       }
       else {
+
         parse_mode_ = PARSE_MODE_ERROR;
+
       }
       break;
 
 
     case PARSE_MODE_ERROR:
       // do nothing
+      //
       break;
 
     }
@@ -378,10 +483,15 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
 bool parser_type::statement_parser_finalize_()
 {
+  // Ensure we are in the correct mode before trying to
+  // finalize
+  //
   if ( parse_mode_ == PARSE_MODE_OPERAND_EXPECTED ) {
     return false;
   }
 
+  // Try to finalize parser
+  //
   if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_FINALIZE ) ) ) {
     return false;
   }
@@ -412,10 +522,17 @@ bool parser_type::update_stacks_with_operator_(
                                                instruction_type                       eval_data
                                                )
 {
+  // Process an operator. This entails managing the operator stack
+  //  and/or transferring operators into the instructions at the appropriate
+  //  spots (shunting yard algorithm)
+  //
+
   instruction_id_type instruction_id = eval_data.id;
-  
+
   if ( instruction_id == INSTRUCTION_ID_TYPE_LPARENS ) {
-      
+
+    // Keep track of parenthesis level
+    //
     lparens_.push_back( operator_stack_.size() );
       
   }
@@ -428,12 +545,13 @@ bool parser_type::update_stacks_with_operator_(
     }
 
     // For finalize, make sure no un-matched left parens exist
+    //
     else if ( (instruction_id == INSTRUCTION_ID_TYPE_FINALIZE) && !lparens_.empty() ) {
       return false;
     }
 
-    // The elements popped off the operator stack will be added to the
-    //  statements stack
+    // The operators popped off the operator stack will be emitted as
+    //  instructions
     //
         
     while ( !operator_stack_.empty() ) {
@@ -457,7 +575,8 @@ bool parser_type::update_stacks_with_operator_(
           break;
         }
 
-        // ...Or the topmost operator in the operator stack has a < precedence
+        // ...Or the topmost operator in the operator stack has a lower precedence
+	// than the operator we are currently processing
         //
         if ( operator_data[ instruction_id ].precedence >= operator_data[ operator_stack_.back().id ].precedence ) {
           break;
@@ -465,7 +584,11 @@ bool parser_type::update_stacks_with_operator_(
       }
 
       if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_FN ) {
+	// This operator is a user-defined function
+	//
 
+	// Calculate the stack space required to call this function
+	//
         size_t stack_space = 0;
 
         size_t function_return_size = operator_stack_.back().symbol_data->fn_ret_size;
@@ -475,54 +598,78 @@ bool parser_type::update_stacks_with_operator_(
           stack_space += (operator_stack_.back().symbol_data->fn_nargs * 8U);
         }
 
-        // reserve space on dstack for return value (if any) + args
+	// Emit instruction to reserve enough d-stack space for this function's
+	//  return value (if any) + args (if any)
+	//
         size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
         statements_.back().arg.i32  = stack_space;
+
+	// And keep track of where we will be wrt the d-stack frame base
+	//
         current_offset_from_stack_frame_base_.back() += stack_space;
 
-        // transfer any args from estack to dstack. these
+	// Emit instructions to transfer any args from e-stack to d-stack. These
         // are the function's arguments, passed in by the caller
         //
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           int32_t offset = -8;
           for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
+	    // emit instruction to copy from e-stack to d-stack
+	    //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
             statements_.back().arg.i32    = current_offset_from_stack_frame_base_.back() + offset;
+
+	    // emit instruction to pop top-most e-stack value
+	    //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
             statements_.back().arg.sz  = 1U;
           }
         }
-        
+
+	// debug: print out stack
+	//
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
-        
+
+	// emit instruction to call function
+	//
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_CALL ) );
         statements_.back().arg.sz   = operator_stack_.back().arg.sz;
 
-        // adjust stack to remove the args that were passed to the function
+	// emit instructions that will be executed when the function is
+	//  finished. this will do the appropriate cleanup of the d-stack
+	//
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
           statements_.back().arg.i32  = operator_stack_.back().symbol_data->fn_nargs * -8;
         }
 
+	// debug: print out stack
+	//
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
-        // transfer return value to estack (if any)
+        // emit instruction to copy return value from d-stack to e-stack (as applicable)
         //
         if ( function_return_size ) {
           statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
           statements_.back().arg.i32    = ret_val_offset;
         }
+
       }
       else {
+	// This operator is a built-in; it can be emitted directly
+	//  into the instructions
+	//
+
         statements_.emplace_back( operator_stack_.back() );
+
       }
 
-      // If && or || is pushed into the statements stack, we need to resolve any previously-pushed
-      // JNEZ/JEQZ with the correct jump arg
+      // If && or || was emitted into the instructions, we need to resolve any previously-pushed
+      // JNEZ/JEQZ with the correct jump arg (for short-circuit chaining)
       //
       if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_AND
-           || operator_stack_.back().id == INSTRUCTION_ID_TYPE_OR ) {
+        || operator_stack_.back().id == INSTRUCTION_ID_TYPE_OR ) {
         // TODO. check return value?
         // ASSERT. linked_idx is non-zero
         anchor_jump_here_( operator_stack_.back().linked_idx );
@@ -548,10 +695,11 @@ bool parser_type::update_stacks_with_operator_(
         
       operator_stack_.emplace_back( eval_data );
 
-      // If && or ||, we need to add a JEQZ/JNEZ into the statements, to handle short-circuits
+      // If this isa && or ||, we need to emit JEQZ (for &&) or JNEZ (for ||) instruction,
+      // to handle short-circuits
       // NOTE that we are using the "linked_idx" field in the && or || to
       //  store the location of the associated JEQZ/JNEZ. This is faster than
-      //  searching backwards at the time the && or || is pushed into the statements stack
+      //  searching backwards at the time the && or || is emitted as an instruction
       //
       if ( instruction_id == INSTRUCTION_ID_TYPE_AND ) {
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JEQZ ) );
