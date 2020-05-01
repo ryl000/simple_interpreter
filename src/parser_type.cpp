@@ -78,77 +78,77 @@ namespace {
   // NOTE: needs to match up with instruction_id_type enum
   //
   const operator_data_type operator_data[] = {
-    { 0, "push-double" }
-    ,{ 0, "push-int32" }
-    ,{ 0,  "push-sizet" }
+     { 0,  "push-double"            }
+    ,{ 0,  "push-int32"             }
+    ,{ 0,  "push-sizet"             }
 
-    ,{ 10, "not" }
-    ,{ 10, "negate" }
+    ,{ 10, "not"                    }
+    ,{ 10, "negate"                 }
    
-    ,{ 1,  "(" }
-    ,{ 1,  ")" }
+    ,{ 1,  "("                      }
+    ,{ 1,  ")"                      }
 
-    ,{ 0,  ";" }
+    ,{ 0,  ";"                      }
 
-    ,{ 0,  "clear-stack" }
-    ,{ 0,  "pop" }
-    ,{ 0,  "jnez" }
-    ,{ 0,  "jeqz" }
-    ,{ 0,  "jceqz" }
-    ,{ 0,  "jmp" }
-    ,{ 0,  "jmp-absolute" }
+    ,{ 0,  "clear-stack"            }
+    ,{ 0,  "pop"                    }
+    ,{ 0,  "jnez"                   }
+    ,{ 0,  "jeqz"                   }
+    ,{ 0,  "jceqz"                  }
+    ,{ 0,  "jmp"                    }
+    ,{ 0,  "jmp-absolute"           }
 
-    ,{ 0,  "copy-to-addr" }
-    ,{ 0,  "copy-from-addr" }
-    ,{ 0,  "copy-to-stack-offset" }
+    ,{ 0,  "copy-to-addr"           }
+    ,{ 0,  "copy-from-addr"         }
+    ,{ 0,  "copy-to-stack-offset"   }
     ,{ 0,  "copy-from-stack-offset" }
 
-    ,{ 0,  "move-end-of-stack" }
-    ,{ 0,  "call" }
-    ,{ 0,  "return" }
+    ,{ 0,  "move-end-of-stack"      }
+    ,{ 0,  "call"                   }
+    ,{ 0,  "return"                 }
 
-    ,{ 0,  "print-dstack" }
+    ,{ 0,  "print-dstack"           }
     
-    ,{ 9,  "fn" }
+    ,{ 9,  "fn"                     }
 
-    ,{ 8,  "add" }
-    ,{ 8,  "subtract" }
+    ,{ 8,  "add"                    }
+    ,{ 8,  "subtract"               }
 
-    ,{ 9,  "divide" }
-    ,{ 9,  "mutliply" }
+    ,{ 9,  "divide"                 }
+    ,{ 9,  "mutliply"               }
    
-    ,{ 6,  "eq" }
-    ,{ 6,  "ne" }
-    ,{ 7,  "ge" }
-    ,{ 7,  "gt" }
-    ,{ 7,  "le" }
-    ,{ 7,  "lt" }
+    ,{ 6,  "eq"                     }
+    ,{ 6,  "ne"                     }
+    ,{ 7,  "ge"                     }
+    ,{ 7,  "gt"                     }
+    ,{ 7,  "le"                     }
+    ,{ 7,  "lt"                     }
    
-    ,{ 5,  "and" }
-    ,{ 4,  "or" }
+    ,{ 5,  "and"                    }
+    ,{ 4,  "or"                     }
    
-    ,{ 2,  "comma" }
+    ,{ 2,  "comma"                  }
 
-    ,{ 3,  "assign" }
+    ,{ 3,  "assign"                 }
    
   };
 
 
   bool is_keyword( const std::string &name )
   {
-    if ( std::strcmp( "else", name.c_str() ) == 0 ) {
+    if      ( std::strcmp( "else",   name.c_str() ) == 0 ) {
       return true;
     }
-    else if ( std::strcmp( "fn", name.c_str() ) == 0 ) {
+    else if ( std::strcmp( "fn",     name.c_str() ) == 0 ) {
       return true;
     }
-    else if ( std::strcmp( "if", name.c_str() ) == 0 ) {
+    else if ( std::strcmp( "if",     name.c_str() ) == 0 ) {
       return true;
     }
     else if ( std::strcmp( "return", name.c_str() ) == 0 ) {
       return true;
     }
-    else if ( std::strcmp( "while", name.c_str() ) == 0 ) {
+    else if ( std::strcmp( "while",  name.c_str() ) == 0 ) {
       return true;
     }
     else if ( std::strcmp( "double", name.c_str() ) == 0 ) {
@@ -157,7 +157,7 @@ namespace {
 
     return false;
   }
-  
+
 }
 
 
@@ -574,6 +574,7 @@ bool parser_type::parse_char( char c )
 {
   ++char_no_;
 
+
   // Stage 1: Tokenize
   //
   {
@@ -584,150 +585,189 @@ bool parser_type::parse_char( char c )
       switch ( lex_mode_ ) {
 
       case LEX_MODE_START:
+	// Starting mode for lexer
+	//
+
         reprocess = false;
+
         if ( std::isdigit( c ) ) {
+
+	  // Digit seen; this is the beginning of a number
+	  //
           current_token_ += c;
           lex_mode_ = LEX_MODE_NUMBER_START_DIGIT;
+
         }
         else if ( c == '.' ) {
+
+	  // '.' seen; this is the beginning of a number
+	  //
           current_token_ += c;
           lex_mode_ = LEX_MODE_NUMBER_START_DECIMAL;
+
         }
         else if ( c == '_' || std::isalpha( c ) ) {
+
+	  // Underscore or alphabetical character seen; this
+	  //  is the beginning of a name
+	  //
           current_token_ += c;
           lex_mode_ = LEX_MODE_NAME_START;
+
         }
         else if ( std::isspace( c ) ) {
-          // skip, and stay in this mode
+
+	  // Whitespace is skipped
+	  //
           if ( c == '\n' ) {
             ++line_no_;
             char_no_ = 0;
           };
+
         }
-        else if ( c == '+' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );
-        }
-        else if ( c == '-' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );
-        }
-        else if ( c == '/' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );
-        }
-        else if ( c == '*' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );
-        }
-        else if ( c == '(' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );
-        }
-        else if ( c == ')' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );
-        }
-        else if ( c == ',' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );
-        }
-        else if ( c == ';' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );
-        }
-        else if ( c == '{' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );
-        }
-        else if ( c == '}' ) {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );
-        }
-        else if ( c == '=' ) {
-          lex_mode_ = LEX_MODE_EQ_CHECK;
-        }
-        else if ( c == '>' ) {
-          lex_mode_ = LEX_MODE_GT_CHECK;
-        }
-        else if ( c == '<' ) {
-          lex_mode_ = LEX_MODE_LT_CHECK;
-        }
-        else if ( c == '!' ) {
-          lex_mode_ = LEX_MODE_NOT_CHECK;
-        }
-        else if ( c == '&' ) {
-          lex_mode_ = LEX_MODE_AND_CHECK;
-        }
-        else if ( c == '|' ) {
-          lex_mode_ = LEX_MODE_OR_CHECK;
-        }
+
+	// The following can all be directly translated into tokens
+	//
+        else if ( c == '+' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );          }
+        else if ( c == '-' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );         }
+        else if ( c == '/' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );        }
+        else if ( c == '*' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );      }
+        else if ( c == '(' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );       }
+        else if ( c == ')' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );       }
+        else if ( c == ',' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );         }
+        else if ( c == ';' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );     }
+        else if ( c == '{' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );  }
+        else if ( c == '}' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );  }
+
+	// The following may be the first character of "compound" lexemes, so they
+	//  need to advance to another mode to check for that paired character
+	//
+        else if ( c == '=' ) {  lex_mode_ = LEX_MODE_EQ_CHECK;   }
+        else if ( c == '>' ) {  lex_mode_ = LEX_MODE_GT_CHECK;   }
+        else if ( c == '<' ) {  lex_mode_ = LEX_MODE_LT_CHECK;   }
+        else if ( c == '!' ) {  lex_mode_ = LEX_MODE_NOT_CHECK;  }
+        else if ( c == '&' ) {  lex_mode_ = LEX_MODE_AND_CHECK;  }
+        else if ( c == '|' ) {  lex_mode_ = LEX_MODE_OR_CHECK;   }
+
         else if ( c == '#' ) {
+	  
+	  // Enter comment mdoe; rest of line will be ignored
+	  //
           lex_mode_ = LEX_MODE_COMMENT;
+
         }
         else if ( c == '\0' ) {
+
+	  // Put the lexer into its finish state, and also notify
+	  //  the grammar checker about the end-of-input
+	  //
           lex_mode_ = LEX_MODE_END_OF_INPUT;
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_END_OF_INPUT ) );
+	  
         }
         else {
+	  
           lex_mode_ = LEX_MODE_ERROR;
+	  
         }
         break;
 
       case LEX_MODE_COMMENT:
+	// Comment mode; everything up through the newline
+	//  will be ignored
+	//
+	
         if ( c == '\n' ) {
           lex_mode_ = LEX_MODE_START;
         }
         break;
       
       case LEX_MODE_NUMBER_START_DIGIT:
+	// We are parsing a number, and the first thing we
+	//  saw was a digit. Valid transitions are ...
+	//
+	
         if ( std::isdigit( c ) ) {
+	  // ... we saw another digit
+	  //
           current_token_ += c;
         }
         else if ( c == '.' ) {
+	  // ... we saw a decimal point. Starting
+	  //     with next character, start
+	  //     accumulating the fractional part
+	  //     of the number
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
         }
         else if ( c == 'e' || c == 'E' ) {
+	  // ... we saw the beginning of scientific notation
+	  //     exponent part
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
         }
         else {
+	  // ... we saw something else. Finish up this number
+	  //     token, then go back to the lexer start mode
+	  //     and reprocess the current character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
           current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
+          lex_mode_     = LEX_MODE_START;
           reprocess     = true;
         }
         break;
       
       case LEX_MODE_NUMBER_START_DECIMAL:
+	// We are parsing a number, and the first thing we
+	//  saw was a decimal point. The only valid transition is...
+	//
+
         if ( std::isdigit( c ) ) {
+	  // ... we saw a digit. Starting with next
+	  //     character, start accumulating the fractional
+	  //     part of the number
+	  //
           current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_FRACTION;
-        }
-        else if ( c == 'e' || c == 'E' ) {
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
+          lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
         }
         else {
+
           lex_mode_ = LEX_MODE_ERROR;
+
         }
         break;
       
       case LEX_MODE_NUMBER_DECIMAL:
+	// We are working on the fractional
+	//  part of the number. But we have
+	//  already seen at least one digit,
+	//  in either the whole number part
+	//  or the fractiona part, so if we
+	//  need to stop, that's ok. Valid
+	//  transitions are ...
+	//
+	
         if ( std::isdigit( c ) ) {
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_FRACTION;
-        }
-        else {
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
-
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_FRACTION:
-        if ( std::isdigit( c ) ) {
+	  // ... we saw another digit
+	  //
           current_token_ += c;
         }
         else if ( c == 'e' || c == 'E' ) {
+	  // ... we saw the beginning of scientific notation
+	  //     exponent part
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
         }
         else {
+	  // ... we saw something else. Finish up this number
+	  //     token, then go back to the lexer start mode
+	  //     and reprocess the current character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
           current_token_.clear();
@@ -737,34 +777,65 @@ bool parser_type::parse_char( char c )
         break;
       
       case LEX_MODE_NUMBER_EXPONENT:
+	// We have started working on the scientific notation part
+	//  of the number. Valid transitions are ...
+	//
+	
         if ( c == '+' || c == '-' ) {
+	  // ... we saw the +/- sign. Next we will expect
+	  //     the first digit of the exponent
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_EXPONENT_SIGN;
         }
         else if ( std::isdigit( c ) ) {
+	  // ... we saw a digit of the exponent. Look
+	  //     for more
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
         }
         else {
+	  
           lex_mode_ = LEX_MODE_ERROR;
+	  
         }
         break;
       
       case LEX_MODE_NUMBER_EXPONENT_SIGN:
+	// We are expecting the first digit in the
+	//  exponent part of the number
+	//
+	
         if ( std::isdigit( c ) ) {
+	  // We saw a digit of the exponent. Look
+	  //  for more
+	  //
           current_token_ += c;
           lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
         }
         else {
+	  
           lex_mode_ = LEX_MODE_ERROR;
+	  
         }
         break;
       
       case LEX_MODE_NUMBER_EXPONENT_DIGIT:
+	// We are looking for more digits in the exponent.
+	//  Valid transitions are ...
+	//
+	
         if ( std::isdigit( c ) ) {
+	  // ... we saw another digit
+	  //
           current_token_ += c;
         }
         else {
+	  // ... we saw something else. Finish up this number
+	  //     token, then go back to the lexer start mode
+	  //     and reprocess the current character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
         
           current_token_.clear();
@@ -774,10 +845,20 @@ bool parser_type::parse_char( char c )
         break;
       
       case LEX_MODE_NAME_START:
-        if ( c == '_' || std::isalpha( c ) || std::isdigit( c ) ) {
+	// We saw the first character of a name.
+	//  Valid transitions are ...
+	//
+	
+        if ( c == '_' || std::isalnum( c ) ) {
+	  // ... another alphanumeric (or underscore) character seen
+	  //
           current_token_ += c;
         }
         else {
+	  // ... we saw something else. Finish up this name
+	  //     token, then go back to the lexer start mode
+	  //     and reprocess the current character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NAME, current_token_ ) );
         
           current_token_.clear();
@@ -787,11 +868,22 @@ bool parser_type::parse_char( char c )
         break;
 
       case LEX_MODE_EQ_CHECK:
+	// We saw an '=' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '=' ) {
+	  // This is an == token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+	  // This is an = token. Finish it up, then go back
+	  //  to the lexer start mode and reprocess the current
+	  //  character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_ASSIGN ) );
 
           current_token_.clear();
@@ -801,11 +893,22 @@ bool parser_type::parse_char( char c )
         break;
 
       case LEX_MODE_GT_CHECK:
+	// We saw a '>' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '=' ) {
+	  // This is a >= token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+	  // This is a > token. Finish it up, then go back
+	  //  to the lexer start mode and reprocess the current
+	  //  character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GT ) );
 
           current_token_.clear();
@@ -815,11 +918,22 @@ bool parser_type::parse_char( char c )
         break;
         
       case LEX_MODE_LT_CHECK:
+	// We saw a '<' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '=' ) {
+	  // This is a <= token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+	  // This is a < token. Finish it up, then go back
+	  //  to the lexer start mode and reprocess the current
+	  //  character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LT ) );
 
           current_token_.clear();
@@ -829,11 +943,22 @@ bool parser_type::parse_char( char c )
         break;
 
       case LEX_MODE_NOT_CHECK:
+	// We saw a '!' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '=' ) {
+	  // This is a != token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+	  // This is a ! token. Finish it up, then go back
+	  //  to the lexer start mode and reprocess the current
+	  //  character
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NOT ) );
 
           current_token_.clear();
@@ -843,22 +968,40 @@ bool parser_type::parse_char( char c )
         break;
 
       case LEX_MODE_AND_CHECK:
+	// We saw a '&' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '&' ) {
+	  // This is a && token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+
           lex_mode_ = LEX_MODE_ERROR;
+
         }
         break;
 
       case LEX_MODE_OR_CHECK:
+	// We saw a '|' that may or may not be leading a lexeme.
+	//  Check to see what follows ...
+	//
+
         if ( c == '|' ) {
+	  // This is a || token
+	  //
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
           lex_mode_ = LEX_MODE_START;
         }
+	// TODO. eat whitespace
         else {
+
           lex_mode_ = LEX_MODE_ERROR;
+
         }
         break;
 
