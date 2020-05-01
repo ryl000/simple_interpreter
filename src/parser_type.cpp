@@ -727,8 +727,8 @@ bool parser_type::parse_char( char c )
 	//
 
         if ( std::isdigit( c ) ) {
-	  // ... we saw a digit. Starting with next
-	  //     character, start accumulating the fractional
+	  // ... we saw a digit. Continue working on
+	  //     accumulating the fractional
 	  //     part of the number
 	  //
           current_token_ += c;
@@ -878,7 +878,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 	  // This is an = token. Finish it up, then go back
 	  //  to the lexer start mode and reprocess the current
@@ -903,7 +912,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 	  // This is a > token. Finish it up, then go back
 	  //  to the lexer start mode and reprocess the current
@@ -928,7 +946,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 	  // This is a < token. Finish it up, then go back
 	  //  to the lexer start mode and reprocess the current
@@ -953,7 +980,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 	  // This is a ! token. Finish it up, then go back
 	  //  to the lexer start mode and reprocess the current
@@ -978,7 +1014,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 
           lex_mode_ = LEX_MODE_ERROR;
@@ -997,7 +1042,16 @@ bool parser_type::parse_char( char c )
           tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
           lex_mode_ = LEX_MODE_START;
         }
-	// TODO. eat whitespace
+	else if ( std::isspace( c ) ) {
+
+	  // Whitespace is skipped
+	  //
+          if ( c == '\n' ) {
+            ++line_no_;
+            char_no_ = 0;
+          };
+
+	}
         else {
 
           lex_mode_ = LEX_MODE_ERROR;
@@ -1037,16 +1091,27 @@ bool parser_type::parse_char( char c )
         reprocess = false;
 
         switch ( grammar_state_.back().mode ) {
+
         case GRAMMAR_MODE_STATEMENT_START:
+	  // Grammar statement start mode
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	    // A name token has been seen. Check for reserved keywords
+	    //
+
             if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
+
               grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_STATEMENT;
               grammar_state_.back().branching_mode = BRANCHING_MODE_IF;
+
             }
             else if ( std::strcmp( "while", last_token.text.c_str() ) == 0 ) {
+
               grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_STATEMENT;
               grammar_state_.back().branching_mode = BRANCHING_MODE_WHILE;
               grammar_state_.back().loopback_offset = statements_.size();
+
             }
             // TODO. instead of allowing
             //  double x;
@@ -1059,9 +1124,12 @@ bool parser_type::parse_char( char c )
             //  fn int y() {}
             //
             else if ( std::strcmp( "double", last_token.text.c_str() ) == 0 ) {
+
               grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_VARIABLE;
+
             }
             else if ( std::strcmp( "fn", last_token.text.c_str() ) == 0 ) {
+
               // TODO. disallow "fn" inside fn...
               grammar_state_.back().mode = GRAMMAR_MODE_DEFINE_FUNCTION_START;
               
@@ -1071,8 +1139,10 @@ bool parser_type::parse_char( char c )
               size_t new_jmp_idx = statements_.size();
               statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JMP ) );
               grammar_state_.back().jump_offset = new_jmp_idx;
+
             }
             else if ( std::strcmp( "return", last_token.text.c_str() ) == 0 ) {
+
               // only allow inside a function
               //
               if ( function_parse_state_.empty() ) {
@@ -1089,17 +1159,29 @@ bool parser_type::parse_char( char c )
               //
               grammar_state_.back().return_mode = true;
               grammar_state_.back().mode        = GRAMMAR_MODE_STATEMENT;
+
             }
             // TODO. add int?
             else {
+
               grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT;
               reprocess                  = true;
+
             }
+
           }
           else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
-            // NOTE: This is a block start
+	    // An opening curly brace has been seen, denoting
+	    //  the start of a block scope
+	    //
+
             ++curly_braces_;
+
+	    // Create a new symbol table for any new variables defined
+	    //  in this block scope
+	    //
             symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
+
             // TODO. the following two are related to stack frame, not curly brace level!
             // Instead of being initialized to zero, they should be set to top-most value
             //
@@ -1117,18 +1199,42 @@ bool parser_type::parse_char( char c )
             //     push new current_new_var_idx_ (value = topmost current_new_var_idx_)
             //     push new new_variable_index_ (value = topmost new_variable_index_)
             //   }
-            //   pop symboL_table_
+            //   pop symbol_table_
             //   pop current_new_var_idx_
             //   pop new_variable_index_
             //
 
+	    // Capture the current position within the stack. Once this
+	    //  block scope is terminated, we will need to revert back
+	    //  to this position in the stack
+	    //
             if ( current_new_var_idx_.empty() ) {
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
             }
 
+	    // NOTE: current_new_var_idx_ represents the "address" of
+	    //  this variable. For global variables, this is an
+	    //  absolute address. For limited-scope variables, this
+	    //  is relative to the stack frame
+	    //
+	    // ???: Why are we copying the previous value? Later,
+	    //  we overwrite this value...
+	    //
+	    // ???: What is the reasoning for current_new_var_idx_
+	    //  vs new_variable_index_? Later, we copy
+	    //  new_variable_index_ into current_new_var_idx_...
+	    //
             current_new_var_idx_.push_back( current_new_var_idx_.back() );
 
+	    // new_variable_index_ represents the next "free"
+	    //  spot for a new variable. This is per-scope,
+	    //  so when a new scope is created, we push a new
+	    //  element into the new_variable_index_, because
+	    //  when we quit this scope, we need to be able
+	    //  to go back to the previous scope, and its idea
+	    //  of where the next free spot for a new variable is
+	    //
             if ( new_variable_index_.empty() ) {
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
@@ -1145,11 +1251,17 @@ bool parser_type::parse_char( char c )
 
           }
           else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
+	    // A closing curly brace has been seen, denoting the
+	    //  end of a block scope
+	    //
+
             if ( curly_braces_ ) {
               --curly_braces_;
+
               symbol_table_.pop_back();
               current_new_var_idx_.pop_back();
               current_offset_from_stack_frame_base_.pop_back();
+
               if ( !new_variable_index_.empty() ) {
                 size_t end_of_prev_block_new_variable_index = new_variable_index_.back();
                 new_variable_index_.pop_back();
@@ -1161,11 +1273,15 @@ bool parser_type::parse_char( char c )
                   statements_.back().arg.i32  = new_variable_index_.back() - end_of_prev_block_new_variable_index;
                 }
               }
+
               grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
               reprocess                  = true;
+
             }
             else {
+
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
             }
           }
           else if ( last_token.id == TOKEN_ID_TYPE_END_OF_INPUT ) {
@@ -1178,13 +1294,23 @@ bool parser_type::parse_char( char c )
           break;
 
         case GRAMMAR_MODE_DEFINE_VARIABLE:
+	  // We are defining a new variable.
+	  //  The type has been seen, so now we are
+	  //  looking for the name
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+	    // Check against keywords
+	    //
             if ( is_keyword( last_token.text ) ) {
               std::cout << "ERROR: keyword found\n";
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
             }
-            
+
+	    // Check against already-defined symbols at this
+	    //  scope level
+	    //
             auto iter = symbol_table_.back().find( last_token.text );
             if ( iter != symbol_table_.back().end() ) {
               std::cout << "ERROR: symbol already defined\n";
@@ -1199,10 +1325,20 @@ bool parser_type::parse_char( char c )
             current_new_var_idx_.back() = new_variable_index_.back();
             new_variable_index_.back() += 8U; // size of double
 
+	    // Emit instruction to adjust the stack for the space
+	    //  allocated for this variable
+	    //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
             statements_.back().arg.i32  = 8; // size of double
-            current_offset_from_stack_frame_base_.back() += 8U;
 
+            // Track where we will be, relative to the base of the
+	    //  stack frame
+	    //
+	    current_offset_from_stack_frame_base_.back() += 8U;
+
+	    // Add this variable to the current scope's
+	    //  symbol table
+	    //
             symbol_table_data_type new_variable;
             if ( symbol_table_.size() == 1 ) {
               new_variable.is_abs = true;
@@ -1217,31 +1353,60 @@ bool parser_type::parse_char( char c )
             grammar_state_.back().mode = GRAMMAR_MODE_CHECK_FOR_ASSIGN;
           }
           else {
+
             grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
           }
           break;
 
         case GRAMMAR_MODE_CHECK_FOR_ASSIGN:
+	  // We are defining a new variable.
+	  //  The name has been seen, so now we are looking
+	  //  for the assignment token
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+
             grammar_state_.back().mode = GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT;
+
           }
           else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    // This variable is not being explicitly initialized
+	    //
+
             grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
             reprocess = true;
+
           }
           else {
+
             grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
           }
           break;
 
         case GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT:
+	  // We are defining a new variable.
+	  //  The assignment token has been seen, so now we are looking
+	  //  for the value. This is in the form of a "statement"
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
+	    // An end-of-statement token has been seen.
+	    //  Try to "finalize" the statement that was being
+	    //  worked on
+	    //
+
             if ( !statement_parser_finalize_() ) {
+
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
             }
             else {
+
               // distinguish between copy-to-absolute (for globals)
-              //  vs copy-to-stack (for stack-local)
+              //  vs copy-to-stack (for stack-local). Emit the
+	      //  appropriate instruction for the relevant case
               //
               if ( symbol_table_.size() == 1 ) {
                 statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOADDR ) );
@@ -1251,28 +1416,58 @@ bool parser_type::parse_char( char c )
                 statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
                 statements_.back().arg.i32    = current_new_var_idx_.back();
               }
+
+	      // The value evaluated for this is on the top of the d-stack;
+	      // emit the instruction to clear it
+	      //
               statements_.push_back( instruction_type( INSTRUCTION_ID_TYPE_CLEAR ) );
+
               grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
+
             }
+
           }
           else {
+
+	    // Pass this token into the "statement" parser
+	    //
             if ( !statement_parser_( last_token ) ) {
+
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
             }
+
           }
           break;
           
         case GRAMMAR_MODE_BRANCH_STATEMENT:
+	  // We are processing some kind of branching construct (if, while).
+	  //  Expect a parenthesis to begin the expression that will
+	  //  control the branching...
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+
             grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_EXPRESSION;
+
           }
           else {
+
             grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
           }
           break;
 
         case GRAMMAR_MODE_BRANCH_EXPRESSION:
+	  // We are processing an expression that is controlling a branch
+	  //  instruction
+	  //
+
           if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
+	    // A right parens has been seen that does not balance
+	    //  an "interior" left-parens; this marks the end of this branch
+	    //  expression
+	    //
 
             if ( parse_mode_ == PARSE_MODE_START ) {
               std::cerr << "ERROR: empty if () expression\n";
@@ -1289,14 +1484,33 @@ bool parser_type::parse_char( char c )
             // TODO. Is there an easy way to unify JCEQZ and JEQZ while maintaining
             // our stack-based evaluation?
             //
+
+	    // Save off the current location in the instruction stream;
+	    //  we will need to "fix up" the jump we are placing here,
+	    //  to jump over the entire block which follows, if this
+	    //  branch expression fails
+	    //
             grammar_state_.back().jump_offset = statements_.size();
+
+	    // Emit the conditional jump
+	    //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JCEQZ ) );
+
+	    // "Notify" the current grammar parse state that we are going inside
+	    //  a branch clause block, and push a new grammar parse state onto the
+	    //  parser stack
+	    //
             grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
             grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, grammar_state_.back().unreachable_code ) );
+
           }
           else if ( !statement_parser_( last_token ) ) {
+	    // An error was encountered while parsing this branch expression
+	    //
+
             std::cerr << "ERROR(2): parse error on character " << c << "\n";
             grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
+
           }
           break;
           
