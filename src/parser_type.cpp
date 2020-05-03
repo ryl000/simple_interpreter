@@ -1372,6 +1372,10 @@ bool parser_type::parse_char( char c )
 	    // ???: What is the reasoning for current_new_var_idx_
 	    //  vs new_variable_index_? Later, we copy
 	    //  new_variable_index_ into current_new_var_idx_...
+	    // A: It appears that current_new_var_idx_ represents
+	    //  the "top-most" variable on the stack that has
+	    //  been defined, while new_variable_index_ represents
+	    //  where the next new variable will be located
 	    //
             current_new_var_idx_.push_back( current_new_var_idx_.back() );
 
@@ -1555,6 +1559,11 @@ bool parser_type::parse_char( char c )
               // distinguish between copy-to-absolute (for globals)
               //  vs copy-to-stack (for stack-local). Emit the
 	      //  appropriate instruction for the relevant case
+	      //
+	      // TODO? replace usage of current_new_var_idx_.back()
+	      //  with something else more lightweight. This appears
+	      //  to be the only "usage" of current_new_var_idx_
+	      //  that doesn't involve it going into the symbol table
               //
               if ( symbol_table_.size() == 1 ) {
                 statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOADDR ) );
