@@ -182,296 +182,296 @@ bool parser_type::statement_parser_( const token_type &last_token )
 
     switch ( parse_mode_ ) {
 
-    // TODO. can we merge this with operand-expected?
-    //
-    case PARSE_MODE_START:
-      parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-      reprocess   = true;
-      break;
-      
-    case PARSE_MODE_OPERAND_EXPECTED:
-      // We are expecting an operand--a variable
-      //  name, a literal value, or a function
-      //  call site
+      // TODO. can we merge this with operand-expected?
       //
-      {
-        if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	  // name found; look for it in the applicable
-	  //  symbol tables (starting from the local
-	  //  scope, then progressing to the scope
-	  //  enclosing the last table searched)
-	  //
-          bool symbol_found = false;
-          for ( auto st_iter = symbol_table_.rbegin()
-                  ; !symbol_found && st_iter != symbol_table_.rend()
-                  ; ++st_iter ) {
+      case PARSE_MODE_START:
+        parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+        reprocess   = true;
+        break;
+      
+      case PARSE_MODE_OPERAND_EXPECTED:
+        // We are expecting an operand--a variable
+        //  name, a literal value, or a function
+        //  call site
+        //
+        {
+          if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
+            // name found; look for it in the applicable
+            //  symbol tables (starting from the local
+            //  scope, then progressing to the scope
+            //  enclosing the last table searched)
+            //
+            bool symbol_found = false;
+            for ( auto st_iter = symbol_table_.rbegin()
+                    ; !symbol_found && st_iter != symbol_table_.rend()
+                    ; ++st_iter ) {
 
-            auto iter = st_iter->find( last_token.text );
+              auto iter = st_iter->find( last_token.text );
 
-            if ( iter != st_iter->end() ) {
+              if ( iter != st_iter->end() ) {
 
-              if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
-		// The symbol is a variable; emit instructtion
-		//  to copy the value (from either the stack
-		//  offset or the global offset) onto the e-stack
-		//
-                if ( !(iter->second.is_abs) ) {
-                  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
-                  statements_.back().arg.i32    = iter->second.sfb_offset;
+                if ( iter->second.type == SYMBOL_TYPE_VARIABLE ) {
+                  // The symbol is a variable; emit instructtion
+                  //  to copy the value (from either the stack
+                  //  offset or the global offset) onto the e-stack
+                  //
+                  if ( !(iter->second.is_abs) ) {
+                    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) );
+                    statements_.back().arg.i32    = iter->second.sfb_offset;
+                  }
+                  else {
+                    statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMADDR ) );
+                    statements_.back().arg.sz   = iter->second.addr;
+                  }
+
+                  // Next pass, we will be expecting an operator
+                  //
+                  parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+
+                  symbol_found = true;
+
                 }
                 else {
-                  statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYFROMADDR ) );
-                  statements_.back().arg.sz   = iter->second.addr;
+                  // The symbol is a function; Update operator stack and
+                  //  instructions as appropriate
+                  //
+
+                  // TODO. if this fn returns void, it cannot be part of
+                  // a "compound" expression
+
+                  instruction_type new_fn( INSTRUCTION_ID_TYPE_FN );
+
+                  // TODO. for now, only "absolute" addresses allowed
+                  if ( !(iter->second.is_abs) ) {
+                    std::cout << "ERROR: nested functions not currently allowed\n";
+                    break;
+                  }
+
+                  new_fn.arg.sz   = iter->second.addr;
+                  new_fn.symbol_data = &(iter->second);
+                  // TODO. check return value?
+                  update_stacks_with_operator_( new_fn );
+
+                  // Next pass, we will be expecting an opening parens
+                  //
+                  parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
+
+                  symbol_found = true;
                 }
+              }
+            }
 
-		// Next pass, we will be expecting an operator
-		//
-                parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+            if ( !symbol_found ) {
+              std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
+              parse_mode_ = PARSE_MODE_ERROR;
+            }
 
-                symbol_found = true;
+          }
+          else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
+            // A literal was found. Emit instruction to load it into the e-stack
+            //
+
+            statements_.emplace_back( std::atof( last_token.text.c_str() ) );
+            parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
+
+          }
+          else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
+                    last_token.id == TOKEN_ID_TYPE_MINUS ||
+                    last_token.id == TOKEN_ID_TYPE_NOT ) {
+            // A unary operator was found. Update operator stack and
+            //  instructions as appropriate
+            //
+
+            if      ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
+              // TODO. check return value?
+              update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NEGATE ) );
+            }
+            else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
+              // TODO. check return value?
+              update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NOT ) );
+            }
+            else {
+              // Nothing needs to be done for unary +
+            }
+
+            // stay in this parse mode
+
+          }
+          else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+
+            // An opening parenthesis was found. Update operator stack and
+            //  instructions as appropriate
+            //
+            // TODO. check return value?
+            update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
+
+            // stay in this parse mode
+          }
+#if 0
+          else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
+            // TODO. restrict this to function mode only!
+            //  i.e., xyz() is allowed, but
+            //  3 + () should not be
+            //
+            if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
+              parse_mode_ = PARSE_MODE_ERROR;
+            }
+            // stay in this parse mode
+          }
+#endif
+          else {
+
+            parse_mode_ = PARSE_MODE_ERROR;
+
+          }
+        }
+        break;
+
+      case PARSE_MODE_OPERATOR_EXPECTED:
+        // We are expecting an operator
+        //
+
+        if ( last_token.id == TOKEN_ID_TYPE_PLUS
+          || last_token.id == TOKEN_ID_TYPE_MINUS
+          || last_token.id == TOKEN_ID_TYPE_DIVIDE
+          || last_token.id == TOKEN_ID_TYPE_MULTIPLY
+          || last_token.id == TOKEN_ID_TYPE_ASSIGN
+          || last_token.id == TOKEN_ID_TYPE_COMMA
+          || last_token.id == TOKEN_ID_TYPE_EQ
+          || last_token.id == TOKEN_ID_TYPE_GE
+          || last_token.id == TOKEN_ID_TYPE_GT
+          || last_token.id == TOKEN_ID_TYPE_LE
+          || last_token.id == TOKEN_ID_TYPE_LT
+          || last_token.id == TOKEN_ID_TYPE_NEQ
+          || last_token.id == TOKEN_ID_TYPE_AND
+          || last_token.id == TOKEN_ID_TYPE_OR ) {
+          // A binary infix operator found
+          //
+
+          instruction_id_type new_instruction_id_type;
+          if ( !token_id_to_instruction_id_( last_token.id, &new_instruction_id_type ) ) {
+
+            parse_mode_ = PARSE_MODE_ERROR;
+
+          }
+          else {
+        
+            if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
+              // If we've come across an assignment token, the
+              // most-recently emitted instruction must be a copyfromaddress/copyfromstackoffset
+              // (i.e., a variable name). We will convert this to
+              // a push-addr/push-stack-offset, because the assign-op needs that addr
+              // for the assignment
+              //
+              // the e-stack will look like this at the time of the assign:
+              //   offset
+              //   0
+              //   value
+              //  (top-of-e-stack)
+              // or
+              //   addr
+              //   1
+              //   value
+              //  (top-of-estack)
+              //
+              if ( statements_.empty() ) {
+
+                parse_mode_ = PARSE_MODE_ERROR;
+
+              }
+              else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) {
+
+                // NOTE: statements_.back().arg.i32 is assumed to have been set already.
+                // convert most-recently emitted instruction into a "push i32 onto e-stack"
+                //
+                statements_.back().id = INSTRUCTION_ID_TYPE_PUSHINT32;
+
+                // Emit an instruction to push a 0 onto the e-stack; this means
+                //  "relative to stack frame base"
+                //
+                statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
+                statements_.back().arg.i32 = 0;
+
+              }
+              else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMADDR ) {
+
+                // NOTE: statements_.back().arg.sz is assumed to have been set already.
+                // convert most-recently emitted instruction into a "push sz onto e-stack"
+                //
+                statements_.back().id = INSTRUCTION_ID_TYPE_PUSHSIZET;
+
+                // Emit an instruction to push a 1 onto the e-stack; this means
+                //  "absolute"
+                //
+                statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
+                statements_.back().arg.i32 = 1;
 
               }
               else {
-		// The symbol is a function; Update operator stack and
-		//  instructions as appropriate
-		//
 
-                // TODO. if this fn returns void, it cannot be part of
-                // a "compound" expression
+                parse_mode_ = PARSE_MODE_ERROR;
 
-                instruction_type new_fn( INSTRUCTION_ID_TYPE_FN );
+              }
 
-                // TODO. for now, only "absolute" addresses allowed
-                if ( !(iter->second.is_abs) ) {
-                  std::cout << "ERROR: nested functions not currently allowed\n";
-                  break;
-                }
+            }
 
-                new_fn.arg.sz   = iter->second.addr;
-                new_fn.symbol_data = &(iter->second);
-		// TODO. check return value?
-                update_stacks_with_operator_( new_fn );
 
-		// Next pass, we will be expecting an opening parens
-		//
-                parse_mode_ = PARSE_MODE_FN_LPARENS_EXPECTED;
-
-                symbol_found = true;
+            // Update operator stack and instructions as appropriate
+            //
+            if ( parse_mode_ != PARSE_MODE_ERROR ) {
+              if ( !update_stacks_with_operator_( instruction_type( new_instruction_id_type ) ) ) {
+                parse_mode_ = PARSE_MODE_ERROR;
+              }
+              else {
+                parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
               }
             }
           }
 
-          if ( !symbol_found ) {
-            std::cout << "ERROR(A): symbol " << last_token.text << " cannot be found\n";
-            parse_mode_ = PARSE_MODE_ERROR;
-          }
-
         }
-        else if ( last_token.id == TOKEN_ID_TYPE_NUMBER ) {
-	  // A literal was found. Emit instruction to load it into the e-stack
-	  //
-
-          statements_.emplace_back( std::atof( last_token.text.c_str() ) );
-          parse_mode_ = PARSE_MODE_OPERATOR_EXPECTED;
-
-        }
-        else if ( last_token.id == TOKEN_ID_TYPE_PLUS ||
-                  last_token.id == TOKEN_ID_TYPE_MINUS ||
-                  last_token.id == TOKEN_ID_TYPE_NOT ) {
-	  // A unary operator was found. Update operator stack and
-	  //  instructions as appropriate
-	  //
-
-          if      ( last_token.id == TOKEN_ID_TYPE_MINUS ) {
-	    // TODO. check return value?
-            update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NEGATE ) );
-          }
-          else if ( last_token.id == TOKEN_ID_TYPE_NOT ) {
-	    // TODO. check return value?
-            update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_NOT ) );
-          }
-          else {
-            // Nothing needs to be done for unary +
-          }
-
-          // stay in this parse mode
-
-        }
-        else if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
-
-	  // An opening parenthesis was found. Update operator stack and
-	  //  instructions as appropriate
-	  //
-	  // TODO. check return value?
-          update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
-
-          // stay in this parse mode
-        }
-#if 0
         else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-          // TODO. restrict this to function mode only!
-          //  i.e., xyz() is allowed, but
-          //  3 + () should not be
+          // A closing parenthesis was found. Update operator stack
+          // and instructions as appropriate
           //
+
           if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
             parse_mode_ = PARSE_MODE_ERROR;
           }
-          // stay in this parse mode
-        }
-#endif
-        else {
-
-          parse_mode_ = PARSE_MODE_ERROR;
-
-        }
-      }
-      break;
-      
-    case PARSE_MODE_OPERATOR_EXPECTED:
-      // We are expecting an operator
-      //
-
-      if ( last_token.id == TOKEN_ID_TYPE_PLUS
-        || last_token.id == TOKEN_ID_TYPE_MINUS
-        || last_token.id == TOKEN_ID_TYPE_DIVIDE
-        || last_token.id == TOKEN_ID_TYPE_MULTIPLY
-        || last_token.id == TOKEN_ID_TYPE_ASSIGN
-        || last_token.id == TOKEN_ID_TYPE_COMMA
-        || last_token.id == TOKEN_ID_TYPE_EQ
-        || last_token.id == TOKEN_ID_TYPE_GE
-        || last_token.id == TOKEN_ID_TYPE_GT
-        || last_token.id == TOKEN_ID_TYPE_LE
-        || last_token.id == TOKEN_ID_TYPE_LT
-        || last_token.id == TOKEN_ID_TYPE_NEQ
-        || last_token.id == TOKEN_ID_TYPE_AND
-	|| last_token.id == TOKEN_ID_TYPE_OR ) {
-	// A binary infix operator found
-	//
-
-        instruction_id_type new_instruction_id_type;
-        if ( !token_id_to_instruction_id_( last_token.id, &new_instruction_id_type ) ) {
-
-          parse_mode_ = PARSE_MODE_ERROR;
 
         }
         else {
-        
-          if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
-            // If we've come across an assignment token, the
-            // most-recently emitted instruction must be a copyfromaddress/copyfromstackoffset
-            // (i.e., a variable name). We will convert this to
-            // a push-addr/push-stack-offset, because the assign-op needs that addr
-            // for the assignment
-            //
-            // the e-stack will look like this at the time of the assign:
-            //   offset
-            //   0
-            //   value
-	    //  (top-of-e-stack)
-            // or
-            //   addr
-            //   1
-            //   value
-	    //  (top-of-estack)
-            //
-            if ( statements_.empty() ) {
 
-              parse_mode_ = PARSE_MODE_ERROR;
-
-            }
-            else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMSTACKOFFSET ) {
-
-              // NOTE: statements_.back().arg.i32 is assumed to have been set already.
-              // convert most-recently emitted instruction into a "push i32 onto e-stack"
-	      //
-              statements_.back().id = INSTRUCTION_ID_TYPE_PUSHINT32;
-
-	      // Emit an instruction to push a 0 onto the e-stack; this means
-	      //  "relative to stack frame base"
-	      //
-              statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
-              statements_.back().arg.i32 = 0;
-
-            }
-            else if ( statements_.back().id == INSTRUCTION_ID_TYPE_COPYFROMADDR ) {
-
-              // NOTE: statements_.back().arg.sz is assumed to have been set already.
-              // convert most-recently emitted instruction into a "push sz onto e-stack"
-	      //
-              statements_.back().id = INSTRUCTION_ID_TYPE_PUSHSIZET;
-
-	      // Emit an instruction to push a 1 onto the e-stack; this means
-	      //  "absolute"
-	      //
-              statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_PUSHINT32 ) );
-              statements_.back().arg.i32 = 1;
-
-            }
-            else {
-
-              parse_mode_ = PARSE_MODE_ERROR;
-
-            }
-
-          }
-
-
-	  // Update operator stack and instructions as appropriate
-	  //
-          if ( parse_mode_ != PARSE_MODE_ERROR ) {
-            if ( !update_stacks_with_operator_( instruction_type( new_instruction_id_type ) ) ) {
-              parse_mode_ = PARSE_MODE_ERROR;
-            }
-            else {
-              parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
-            }
-          }
-        }
-
-      }
-      else if ( last_token.id == TOKEN_ID_TYPE_RPARENS ) {
-	// A closing parenthesis was found. Update operator stack
-	// and instructions as appropriate
-	//
-
-        if ( !update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_RPARENS ) ) ) {
           parse_mode_ = PARSE_MODE_ERROR;
+
         }
-
-      }
-      else {
-
-        parse_mode_ = PARSE_MODE_ERROR;
-
-      }
-      break;
+        break;
 
     
-    case PARSE_MODE_FN_LPARENS_EXPECTED:
-      // We are expecting an opening parenthesis (for a function
-      //  call site)
-      //
-      if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
+      case PARSE_MODE_FN_LPARENS_EXPECTED:
+        // We are expecting an opening parenthesis (for a function
+        //  call site)
+        //
+        if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
 
-	// Update operator stack and instructions as appropriate
-	//
-	// TODO. check return value?
-        update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
-        parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
+          // Update operator stack and instructions as appropriate
+          //
+          // TODO. check return value?
+          update_stacks_with_operator_( instruction_type( INSTRUCTION_ID_TYPE_LPARENS ) );
+          parse_mode_ = PARSE_MODE_OPERAND_EXPECTED;
 
-      }
-      else {
+        }
+        else {
 
-        parse_mode_ = PARSE_MODE_ERROR;
+          parse_mode_ = PARSE_MODE_ERROR;
 
-      }
-      break;
+        }
+        break;
 
 
-    case PARSE_MODE_ERROR:
-      // do nothing
-      //
-      break;
+      case PARSE_MODE_ERROR:
+        // do nothing
+        //
+        break;
 
     }
 
@@ -576,7 +576,7 @@ bool parser_type::update_stacks_with_operator_(
         }
 
         // ...Or the topmost operator in the operator stack has a lower precedence
-	// than the operator we are currently processing
+        // than the operator we are currently processing
         //
         if ( operator_data[ instruction_id ].precedence >= operator_data[ operator_stack_.back().id ].precedence ) {
           break;
@@ -584,68 +584,72 @@ bool parser_type::update_stacks_with_operator_(
       }
 
       if ( operator_stack_.back().id == INSTRUCTION_ID_TYPE_FN ) {
-	// This operator is a user-defined function
-	//
+        // This operator is a user-defined function
+        //
 
-	// Calculate the stack space required to call this function
-	//
+        // Calculate the stack space required to call this function. This means...
+        //
         size_t stack_space = 0;
 
+        // ... the size of the return value
+        //
         size_t function_return_size = operator_stack_.back().symbol_data->fn_ret_size;
-
         stack_space = function_return_size;
+
+        // ... plus any arguments
+        //
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           stack_space += (operator_stack_.back().symbol_data->fn_nargs * 8U);
         }
 
-	// Emit instruction to reserve enough d-stack space for this function's
-	//  return value (if any) + args (if any)
-	//
+        // Emit instruction to reserve enough d-stack space for this function's
+        //  return value (if any) + args (if any)
+        //
         size_t ret_val_offset = current_offset_from_stack_frame_base_.back();
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
         statements_.back().arg.i32  = stack_space;
 
-	// And keep track of where we will be wrt the d-stack frame base
-	//
+        // And keep track of where we will be wrt the d-stack frame base
+        //
         current_offset_from_stack_frame_base_.back() += stack_space;
 
-	// Emit instructions to transfer any args from e-stack to d-stack. These
+        // Emit instructions to transfer any args from e-stack to d-stack. These
         // are the function's arguments, passed in by the caller
         //
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           int32_t offset = -8;
           for ( size_t i=0U; i<operator_stack_.back().symbol_data->fn_nargs; ++i, offset -= 8 ) {
-	    // emit instruction to copy from e-stack to d-stack
-	    //
+            // emit instruction to copy from e-stack to d-stack
+            //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOSTACKOFFSET ) );
             statements_.back().arg.i32    = current_offset_from_stack_frame_base_.back() + offset;
 
-	    // emit instruction to pop top-most e-stack value
-	    //
+            // emit instruction to pop top-most e-stack value
+            //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_POP ) );
             statements_.back().arg.sz  = 1U;
           }
         }
 
-	// debug: print out stack
-	//
+        // debug: print out stack
+        //
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
-	// emit instruction to call function
-	//
+        // emit instruction to call function
+        //
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_CALL ) );
         statements_.back().arg.sz   = operator_stack_.back().arg.sz;
 
-	// emit instructions that will be executed when the function is
-	//  finished. this will do the appropriate cleanup of the d-stack
-	//
+        // emit instructions that will be executed when the function is
+        //  finished. this will do the appropriate cleanup of the d-stack
+        //
         if ( operator_stack_.back().symbol_data->fn_nargs > 0U ) {
           statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
           statements_.back().arg.i32  = operator_stack_.back().symbol_data->fn_nargs * -8;
         }
 
-	// debug: print out stack
-	//
+        // debug: print out stack
+        //
         statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_DEBUG_PRINT_STACK ) );
 
         // emit instruction to copy return value from d-stack to e-stack (as applicable)
@@ -657,9 +661,9 @@ bool parser_type::update_stacks_with_operator_(
 
       }
       else {
-	// This operator is a built-in; it can be emitted directly
-	//  into the instructions
-	//
+        // This operator is a built-in; it can be emitted directly
+        //  into the instructions
+        //
 
         statements_.emplace_back( operator_stack_.back() );
 
@@ -695,7 +699,7 @@ bool parser_type::update_stacks_with_operator_(
         
       operator_stack_.emplace_back( eval_data );
 
-      // If this isa && or ||, we need to emit JEQZ (for &&) or JNEZ (for ||) instruction,
+      // If this is a && or ||, we need to emit JEQZ (for &&) or JNEZ (for ||) instruction,
       // to handle short-circuits
       // NOTE that we are using the "linked_idx" field in the && or || to
       //  store the location of the associated JEQZ/JNEZ. This is faster than
@@ -732,486 +736,486 @@ bool parser_type::parse_char( char c )
     
       switch ( lex_mode_ ) {
 
-      case LEX_MODE_START:
-	// Starting mode for lexer
-	//
+        case LEX_MODE_START:
+          // Starting mode for lexer
+          //
 
-        reprocess = false;
+          reprocess = false;
 
-        if ( std::isdigit( c ) ) {
+          if ( std::isdigit( c ) ) {
 
-	  // Digit seen; this is the beginning of a number
-	  //
-          current_token_ += c;
-          lex_mode_ = LEX_MODE_NUMBER_START_DIGIT;
+            // Digit seen; this is the beginning of a number
+            //
+            current_token_ += c;
+            lex_mode_ = LEX_MODE_NUMBER_START_DIGIT;
 
-        }
-        else if ( c == '.' ) {
+          }
+          else if ( c == '.' ) {
 
-	  // '.' seen; this is the beginning of a number
-	  //
-          current_token_ += c;
-          lex_mode_ = LEX_MODE_NUMBER_START_DECIMAL;
+            // '.' seen; this is the beginning of a number
+            //
+            current_token_ += c;
+            lex_mode_ = LEX_MODE_NUMBER_START_DECIMAL;
 
-        }
-        else if ( c == '_' || std::isalpha( c ) ) {
+          }
+          else if ( c == '_' || std::isalpha( c ) ) {
 
-	  // Underscore or alphabetical character seen; this
-	  //  is the beginning of a name
-	  //
-          current_token_ += c;
-          lex_mode_ = LEX_MODE_NAME_START;
+            // Underscore or alphabetical character seen; this
+            //  is the beginning of a name
+            //
+            current_token_ += c;
+            lex_mode_ = LEX_MODE_NAME_START;
 
-        }
-        else if ( std::isspace( c ) ) {
+          }
+          else if ( std::isspace( c ) ) {
 
-	  // Whitespace is skipped
-	  //
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
+
+          }
+
+          // The following can all be directly translated into tokens
+          //
+          else if ( c == '+' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );          }
+          else if ( c == '-' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );         }
+          else if ( c == '/' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );        }
+          else if ( c == '*' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );      }
+          else if ( c == '(' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );       }
+          else if ( c == ')' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );       }
+          else if ( c == ',' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );         }
+          else if ( c == ';' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );     }
+          else if ( c == '{' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );  }
+          else if ( c == '}' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );  }
+
+          // The following may be the first character of "compound" lexemes, so they
+          //  need to advance to another mode to check for that paired character
+          //
+          else if ( c == '=' ) {  lex_mode_ = LEX_MODE_EQ_CHECK;   }
+          else if ( c == '>' ) {  lex_mode_ = LEX_MODE_GT_CHECK;   }
+          else if ( c == '<' ) {  lex_mode_ = LEX_MODE_LT_CHECK;   }
+          else if ( c == '!' ) {  lex_mode_ = LEX_MODE_NOT_CHECK;  }
+          else if ( c == '&' ) {  lex_mode_ = LEX_MODE_AND_CHECK;  }
+          else if ( c == '|' ) {  lex_mode_ = LEX_MODE_OR_CHECK;   }
+
+          else if ( c == '#' ) {
+
+            // Enter comment mdoe; rest of line will be ignored
+            //
+            lex_mode_ = LEX_MODE_COMMENT;
+
+          }
+          else if ( c == '\0' ) {
+
+            // Put the lexer into its finish state, and also notify
+            //  the grammar checker about the end-of-input
+            //
+            lex_mode_ = LEX_MODE_END_OF_INPUT;
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_END_OF_INPUT ) );
+
+          }
+          else {
+
+            lex_mode_ = LEX_MODE_ERROR;
+
+          }
+          break;
+
+        case LEX_MODE_COMMENT:
+          // Comment mode; everything up through the newline
+          //  will be ignored
+          //
+
           if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+            lex_mode_ = LEX_MODE_START;
+          }
+          break;
 
-        }
+        case LEX_MODE_NUMBER_START_DIGIT:
+          // We are parsing a number, and the first thing we
+          //  saw was a digit. Valid transitions are ...
+          //
 
-	// The following can all be directly translated into tokens
-	//
-        else if ( c == '+' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_PLUS ) );          }
-        else if ( c == '-' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MINUS ) );         }
-        else if ( c == '/' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_DIVIDE ) );        }
-        else if ( c == '*' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_MULTIPLY ) );      }
-        else if ( c == '(' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LPARENS ) );       }
-        else if ( c == ')' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RPARENS ) );       }
-        else if ( c == ',' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_COMMA ) );         }
-        else if ( c == ';' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_SEMICOLON ) );     }
-        else if ( c == '{' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LCURLY_BRACE ) );  }
-        else if ( c == '}' ) {  tokens_.emplace_back( token_type( TOKEN_ID_TYPE_RCURLY_BRACE ) );  }
+          if ( std::isdigit( c ) ) {
+            // ... we saw another digit
+            //
+            current_token_ += c;
+          }
+          else if ( c == '.' ) {
+            // ... we saw a decimal point. Starting
+            //     with next character, start
+            //     accumulating the fractional part
+            //     of the number
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
+          }
+          else if ( c == 'e' || c == 'E' ) {
+            // ... we saw the beginning of scientific notation
+            //     exponent part
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
+          }
+          else {
+            // ... we saw something else. Finish up this number
+            //     token, then go back to the lexer start mode
+            //     and reprocess the current character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-	// The following may be the first character of "compound" lexemes, so they
-	//  need to advance to another mode to check for that paired character
-	//
-        else if ( c == '=' ) {  lex_mode_ = LEX_MODE_EQ_CHECK;   }
-        else if ( c == '>' ) {  lex_mode_ = LEX_MODE_GT_CHECK;   }
-        else if ( c == '<' ) {  lex_mode_ = LEX_MODE_LT_CHECK;   }
-        else if ( c == '!' ) {  lex_mode_ = LEX_MODE_NOT_CHECK;  }
-        else if ( c == '&' ) {  lex_mode_ = LEX_MODE_AND_CHECK;  }
-        else if ( c == '|' ) {  lex_mode_ = LEX_MODE_OR_CHECK;   }
+            current_token_.clear();
+            lex_mode_     = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-        else if ( c == '#' ) {
-	  
-	  // Enter comment mdoe; rest of line will be ignored
-	  //
-          lex_mode_ = LEX_MODE_COMMENT;
+        case LEX_MODE_NUMBER_START_DECIMAL:
+          // We are parsing a number, and the first thing we
+          //  saw was a decimal point. The only valid transition is...
+          //
 
-        }
-        else if ( c == '\0' ) {
+          if ( std::isdigit( c ) ) {
+            // ... we saw a digit. Continue working on
+            //     accumulating the fractional
+            //     part of the number
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
+          }
+          else {
 
-	  // Put the lexer into its finish state, and also notify
-	  //  the grammar checker about the end-of-input
-	  //
-          lex_mode_ = LEX_MODE_END_OF_INPUT;
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_END_OF_INPUT ) );
-	  
-        }
-        else {
-	  
-          lex_mode_ = LEX_MODE_ERROR;
-	  
-        }
-        break;
+            lex_mode_ = LEX_MODE_ERROR;
 
-      case LEX_MODE_COMMENT:
-	// Comment mode; everything up through the newline
-	//  will be ignored
-	//
-	
-        if ( c == '\n' ) {
-          lex_mode_ = LEX_MODE_START;
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_START_DIGIT:
-	// We are parsing a number, and the first thing we
-	//  saw was a digit. Valid transitions are ...
-	//
-	
-        if ( std::isdigit( c ) ) {
-	  // ... we saw another digit
-	  //
-          current_token_ += c;
-        }
-        else if ( c == '.' ) {
-	  // ... we saw a decimal point. Starting
-	  //     with next character, start
-	  //     accumulating the fractional part
-	  //     of the number
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
-        }
-        else if ( c == 'e' || c == 'E' ) {
-	  // ... we saw the beginning of scientific notation
-	  //     exponent part
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
-        }
-        else {
-	  // ... we saw something else. Finish up this number
-	  //     token, then go back to the lexer start mode
-	  //     and reprocess the current character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
+          }
+          break;
 
-          current_token_.clear();
-          lex_mode_     = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_START_DECIMAL:
-	// We are parsing a number, and the first thing we
-	//  saw was a decimal point. The only valid transition is...
-	//
+        case LEX_MODE_NUMBER_DECIMAL:
+          // We are working on the fractional
+          //  part of the number. But we have
+          //  already seen at least one digit,
+          //  in either the whole number part
+          //  or the fractiona part, so if we
+          //  need to stop, that's ok. Valid
+          //  transitions are ...
+          //
 
-        if ( std::isdigit( c ) ) {
-	  // ... we saw a digit. Continue working on
-	  //     accumulating the fractional
-	  //     part of the number
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_DECIMAL;
-        }
-        else {
+          if ( std::isdigit( c ) ) {
+            // ... we saw another digit
+            //
+            current_token_ += c;
+          }
+          else if ( c == 'e' || c == 'E' ) {
+            // ... we saw the beginning of scientific notation
+            //     exponent part
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
+          }
+          else {
+            // ... we saw something else. Finish up this number
+            //     token, then go back to the lexer start mode
+            //     and reprocess the current character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-          lex_mode_ = LEX_MODE_ERROR;
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_DECIMAL:
-	// We are working on the fractional
-	//  part of the number. But we have
-	//  already seen at least one digit,
-	//  in either the whole number part
-	//  or the fractiona part, so if we
-	//  need to stop, that's ok. Valid
-	//  transitions are ...
-	//
-	
-        if ( std::isdigit( c ) ) {
-	  // ... we saw another digit
-	  //
-          current_token_ += c;
-        }
-        else if ( c == 'e' || c == 'E' ) {
-	  // ... we saw the beginning of scientific notation
-	  //     exponent part
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT;
-        }
-        else {
-	  // ... we saw something else. Finish up this number
-	  //     token, then go back to the lexer start mode
-	  //     and reprocess the current character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
+        case LEX_MODE_NUMBER_EXPONENT:
+          // We have started working on the scientific notation part
+          //  of the number. Valid transitions are ...
+          //
 
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_EXPONENT:
-	// We have started working on the scientific notation part
-	//  of the number. Valid transitions are ...
-	//
-	
-        if ( c == '+' || c == '-' ) {
-	  // ... we saw the +/- sign. Next we will expect
-	  //     the first digit of the exponent
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT_SIGN;
-        }
-        else if ( std::isdigit( c ) ) {
-	  // ... we saw a digit of the exponent. Look
-	  //     for more
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
-        }
-        else {
-	  
-          lex_mode_ = LEX_MODE_ERROR;
-	  
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_EXPONENT_SIGN:
-	// We are expecting the first digit in the
-	//  exponent part of the number
-	//
-	
-        if ( std::isdigit( c ) ) {
-	  // We saw a digit of the exponent. Look
-	  //  for more
-	  //
-          current_token_ += c;
-          lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
-        }
-        else {
-	  
-          lex_mode_ = LEX_MODE_ERROR;
-	  
-        }
-        break;
-      
-      case LEX_MODE_NUMBER_EXPONENT_DIGIT:
-	// We are looking for more digits in the exponent.
-	//  Valid transitions are ...
-	//
-	
-        if ( std::isdigit( c ) ) {
-	  // ... we saw another digit
-	  //
-          current_token_ += c;
-        }
-        else {
-	  // ... we saw something else. Finish up this number
-	  //     token, then go back to the lexer start mode
-	  //     and reprocess the current character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
-        
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
-      
-      case LEX_MODE_NAME_START:
-	// We saw the first character of a name.
-	//  Valid transitions are ...
-	//
-	
-        if ( c == '_' || std::isalnum( c ) ) {
-	  // ... another alphanumeric (or underscore) character seen
-	  //
-          current_token_ += c;
-        }
-        else {
-	  // ... we saw something else. Finish up this name
-	  //     token, then go back to the lexer start mode
-	  //     and reprocess the current character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NAME, current_token_ ) );
-        
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
+          if ( c == '+' || c == '-' ) {
+            // ... we saw the +/- sign. Next we will expect
+            //     the first digit of the exponent
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_EXPONENT_SIGN;
+          }
+          else if ( std::isdigit( c ) ) {
+            // ... we saw a digit of the exponent. Look
+            //     for more
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
+          }
+          else {
 
-      case LEX_MODE_EQ_CHECK:
-	// We saw an '=' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+            lex_mode_ = LEX_MODE_ERROR;
 
-        if ( c == '=' ) {
-	  // This is an == token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+          }
+          break;
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+        case LEX_MODE_NUMBER_EXPONENT_SIGN:
+          // We are expecting the first digit in the
+          //  exponent part of the number
+          //
 
-	}
-        else {
-	  // This is an = token. Finish it up, then go back
-	  //  to the lexer start mode and reprocess the current
-	  //  character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_ASSIGN ) );
+          if ( std::isdigit( c ) ) {
+            // We saw a digit of the exponent. Look
+            //  for more
+            //
+            current_token_ += c;
+            lex_mode_     = LEX_MODE_NUMBER_EXPONENT_DIGIT;
+          }
+          else {
 
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
+            lex_mode_ = LEX_MODE_ERROR;
 
-      case LEX_MODE_GT_CHECK:
-	// We saw a '>' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+          }
+          break;
 
-        if ( c == '=' ) {
-	  // This is a >= token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+        case LEX_MODE_NUMBER_EXPONENT_DIGIT:
+          // We are looking for more digits in the exponent.
+          //  Valid transitions are ...
+          //
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+          if ( std::isdigit( c ) ) {
+            // ... we saw another digit
+            //
+            current_token_ += c;
+          }
+          else {
+            // ... we saw something else. Finish up this number
+            //     token, then go back to the lexer start mode
+            //     and reprocess the current character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NUMBER, current_token_ ) );
 
-	}
-        else {
-	  // This is a > token. Finish it up, then go back
-	  //  to the lexer start mode and reprocess the current
-	  //  character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GT ) );
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
-        
-      case LEX_MODE_LT_CHECK:
-	// We saw a '<' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+        case LEX_MODE_NAME_START:
+          // We saw the first character of a name.
+          //  Valid transitions are ...
+          //
 
-        if ( c == '=' ) {
-	  // This is a <= token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+          if ( c == '_' || std::isalnum( c ) ) {
+            // ... another alphanumeric (or underscore) character seen
+            //
+            current_token_ += c;
+          }
+          else {
+            // ... we saw something else. Finish up this name
+            //     token, then go back to the lexer start mode
+            //     and reprocess the current character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NAME, current_token_ ) );
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-	}
-        else {
-	  // This is a < token. Finish it up, then go back
-	  //  to the lexer start mode and reprocess the current
-	  //  character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LT ) );
+        case LEX_MODE_EQ_CHECK:
+          // We saw an '=' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
 
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
+          if ( c == '=' ) {
+            // This is an == token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_EQ ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
 
-      case LEX_MODE_NOT_CHECK:
-	// We saw a '!' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
 
-        if ( c == '=' ) {
-	  // This is a != token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+          }
+          else {
+            // This is an = token. Finish it up, then go back
+            //  to the lexer start mode and reprocess the current
+            //  character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_ASSIGN ) );
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-	}
-        else {
-	  // This is a ! token. Finish it up, then go back
-	  //  to the lexer start mode and reprocess the current
-	  //  character
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NOT ) );
+        case LEX_MODE_GT_CHECK:
+          // We saw a '>' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
 
-          current_token_.clear();
-          lex_mode_ = LEX_MODE_START;
-          reprocess     = true;
-        }
-        break;
+          if ( c == '=' ) {
+            // This is a >= token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GE ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
 
-      case LEX_MODE_AND_CHECK:
-	// We saw a '&' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
 
-        if ( c == '&' ) {
-	  // This is a && token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+          }
+          else {
+            // This is a > token. Finish it up, then go back
+            //  to the lexer start mode and reprocess the current
+            //  character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_GT ) );
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-	}
-        else {
+        case LEX_MODE_LT_CHECK:
+          // We saw a '<' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
 
-          lex_mode_ = LEX_MODE_ERROR;
+          if ( c == '=' ) {
+            // This is a <= token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LE ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
 
-        }
-        break;
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
 
-      case LEX_MODE_OR_CHECK:
-	// We saw a '|' that may or may not be leading a lexeme.
-	//  Check to see what follows ...
-	//
+          }
+          else {
+            // This is a < token. Finish it up, then go back
+            //  to the lexer start mode and reprocess the current
+            //  character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_LT ) );
 
-        if ( c == '|' ) {
-	  // This is a || token
-	  //
-          tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
-          lex_mode_ = LEX_MODE_START;
-        }
-	else if ( std::isspace( c ) ) {
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
 
-	  // Whitespace is skipped
-	  //
-          if ( c == '\n' ) {
-            ++line_no_;
-            char_no_ = 0;
-          };
+        case LEX_MODE_NOT_CHECK:
+          // We saw a '!' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
 
-	}
-        else {
+          if ( c == '=' ) {
+            // This is a != token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NEQ ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
 
-          lex_mode_ = LEX_MODE_ERROR;
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
 
-        }
-        break;
+          }
+          else {
+            // This is a ! token. Finish it up, then go back
+            //  to the lexer start mode and reprocess the current
+            //  character
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_NOT ) );
 
-      case LEX_MODE_END_OF_INPUT:
-      case LEX_MODE_ERROR:
-        // Do nothing
-        //
-        break;
+            current_token_.clear();
+            lex_mode_ = LEX_MODE_START;
+            reprocess     = true;
+          }
+          break;
+
+        case LEX_MODE_AND_CHECK:
+          // We saw a '&' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
+
+          if ( c == '&' ) {
+            // This is a && token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_AND ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
+
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
+
+          }
+          else {
+
+            lex_mode_ = LEX_MODE_ERROR;
+
+          }
+          break;
+
+        case LEX_MODE_OR_CHECK:
+          // We saw a '|' that may or may not be leading a lexeme.
+          //  Check to see what follows ...
+          //
+
+          if ( c == '|' ) {
+            // This is a || token
+            //
+            tokens_.emplace_back( token_type( TOKEN_ID_TYPE_OR ) );
+            lex_mode_ = LEX_MODE_START;
+          }
+          else if ( std::isspace( c ) ) {
+
+            // Whitespace is skipped
+            //
+            if ( c == '\n' ) {
+              ++line_no_;
+              char_no_ = 0;
+            };
+
+          }
+          else {
+
+            lex_mode_ = LEX_MODE_ERROR;
+
+          }
+          break;
+
+        case LEX_MODE_END_OF_INPUT:
+        case LEX_MODE_ERROR:
+          // Do nothing
+          //
+          break;
       }
     
     } while ( reprocess );
@@ -1241,12 +1245,12 @@ bool parser_type::parse_char( char c )
         switch ( grammar_state_.back().mode ) {
 
         case GRAMMAR_MODE_STATEMENT_START:
-	  // Grammar statement start mode
-	  //
+          // Grammar statement start mode
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	    // A name token has been seen. Check for reserved keywords
-	    //
+            // A name token has been seen. Check for reserved keywords
+            //
 
             if ( std::strcmp( "if", last_token.text.c_str() ) == 0 ) {
 
@@ -1319,15 +1323,15 @@ bool parser_type::parse_char( char c )
 
           }
           else if ( last_token.id == TOKEN_ID_TYPE_LCURLY_BRACE ) {
-	    // An opening curly brace has been seen, denoting
-	    //  the start of a block scope
-	    //
+            // An opening curly brace has been seen, denoting
+            //  the start of a block scope
+            //
 
             ++curly_braces_;
 
-	    // Create a new symbol table for any new variables defined
-	    //  in this block scope
-	    //
+            // Create a new symbol table for any new variables defined
+            //  in this block scope
+            //
             symbol_table_.push_back( std::map<std::string,symbol_table_data_type>() );
 
             // TODO. the following two are related to stack frame, not curly brace level!
@@ -1352,41 +1356,41 @@ bool parser_type::parse_char( char c )
             //   pop new_variable_index_
             //
 
-	    // Capture the current position within the stack. Once this
-	    //  block scope is terminated, we will need to revert back
-	    //  to this position in the stack
-	    //
+            // Capture the current position within the stack. Once this
+            //  block scope is terminated, we will need to revert back
+            //  to this position in the stack
+            //
             if ( current_new_var_idx_.empty() ) {
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
             }
 
-	    // NOTE: current_new_var_idx_ represents the "address" of
-	    //  this variable. For global variables, this is an
-	    //  absolute address. For limited-scope variables, this
-	    //  is relative to the stack frame
-	    //
-	    // ???: Why are we copying the previous value? Later,
-	    //  we overwrite this value...
-	    //
-	    // ???: What is the reasoning for current_new_var_idx_
-	    //  vs new_variable_index_? Later, we copy
-	    //  new_variable_index_ into current_new_var_idx_...
-	    // A: It appears that current_new_var_idx_ represents
-	    //  the "top-most" variable on the stack that has
-	    //  been defined, while new_variable_index_ represents
-	    //  where the next new variable will be located
-	    //
+            // NOTE: current_new_var_idx_ represents the "address" of
+            //  this variable. For global variables, this is an
+            //  absolute address. For limited-scope variables, this
+            //  is relative to the stack frame
+            //
+            // ???: Why are we copying the previous value? Later,
+            //  we overwrite this value...
+            //
+            // ???: What is the reasoning for current_new_var_idx_
+            //  vs new_variable_index_? Later, we copy
+            //  new_variable_index_ into current_new_var_idx_...
+            // A: It appears that current_new_var_idx_ represents
+            //  the "top-most" variable on the stack that has
+            //  been defined, while new_variable_index_ represents
+            //  where the next new variable will be located
+            //
             current_new_var_idx_.push_back( current_new_var_idx_.back() );
 
-	    // new_variable_index_ represents the next "free"
-	    //  spot for a new variable. This is per-scope,
-	    //  so when a new scope is created, we push a new
-	    //  element into the new_variable_index_, because
-	    //  when we quit this scope, we need to be able
-	    //  to go back to the previous scope, and its idea
-	    //  of where the next free spot for a new variable is
-	    //
+            // new_variable_index_ represents the next "free"
+            //  spot for a new variable. This is per-scope,
+            //  so when a new scope is created, we push a new
+            //  element into the new_variable_index_, because
+            //  when we quit this scope, we need to be able
+            //  to go back to the previous scope, and its idea
+            //  of where the next free spot for a new variable is
+            //
             if ( new_variable_index_.empty() ) {
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
@@ -1403,9 +1407,9 @@ bool parser_type::parse_char( char c )
 
           }
           else if ( last_token.id == TOKEN_ID_TYPE_RCURLY_BRACE ) {
-	    // A closing curly brace has been seen, denoting the
-	    //  end of a block scope
-	    //
+            // A closing curly brace has been seen, denoting the
+            //  end of a block scope
+            //
 
             if ( curly_braces_ ) {
               --curly_braces_;
@@ -1446,23 +1450,23 @@ bool parser_type::parse_char( char c )
           break;
 
         case GRAMMAR_MODE_DEFINE_VARIABLE:
-	  // We are defining a new variable.
-	  //  The type has been seen, so now we are
-	  //  looking for the name
-	  //
+          // We are defining a new variable.
+          //  The type has been seen, so now we are
+          //  looking for the name
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_NAME ) {
-	    // Check against keywords
-	    //
+            // Check against keywords
+            //
             if ( is_keyword( last_token.text ) ) {
               std::cout << "ERROR: keyword found\n";
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
               break;
             }
 
-	    // Check against already-defined symbols at this
-	    //  scope level
-	    //
+            // Check against already-defined symbols at this
+            //  scope level
+            //
             auto iter = symbol_table_.back().find( last_token.text );
             if ( iter != symbol_table_.back().end() ) {
               std::cout << "ERROR: symbol already defined\n";
@@ -1477,20 +1481,20 @@ bool parser_type::parse_char( char c )
             current_new_var_idx_.back() = new_variable_index_.back();
             new_variable_index_.back() += 8U; // size of double
 
-	    // Emit instruction to adjust the stack for the space
-	    //  allocated for this variable
-	    //
+            // Emit instruction to adjust the stack for the space
+            //  allocated for this variable
+            //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_MOVE_END_OF_STACK ) );
             statements_.back().arg.i32  = 8; // size of double
 
             // Track where we will be, relative to the base of the
-	    //  stack frame
-	    //
-	    current_offset_from_stack_frame_base_.back() += 8U;
+            //  stack frame
+            //
+            current_offset_from_stack_frame_base_.back() += 8U;
 
-	    // Add this variable to the current scope's
-	    //  symbol table
-	    //
+            // Add this variable to the current scope's
+            //  symbol table
+            //
             symbol_table_data_type new_variable;
             if ( symbol_table_.size() == 1 ) {
               new_variable.is_abs = true;
@@ -1512,10 +1516,10 @@ bool parser_type::parse_char( char c )
           break;
 
         case GRAMMAR_MODE_CHECK_FOR_ASSIGN:
-	  // We are defining a new variable.
-	  //  The name has been seen, so now we are looking
-	  //  for the assignment token
-	  //
+          // We are defining a new variable.
+          //  The name has been seen, so now we are looking
+          //  for the assignment token
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_ASSIGN ) {
 
@@ -1523,8 +1527,8 @@ bool parser_type::parse_char( char c )
 
           }
           else if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
-	    // This variable is not being explicitly initialized
-	    //
+            // This variable is not being explicitly initialized
+            //
 
             grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_END;
             reprocess = true;
@@ -1538,16 +1542,16 @@ bool parser_type::parse_char( char c )
           break;
 
         case GRAMMAR_MODE_NEW_VARIABLE_ASSIGNMENT:
-	  // We are defining a new variable.
-	  //  The assignment token has been seen, so now we are looking
-	  //  for the value. This is in the form of a "statement"
-	  //
+          // We are defining a new variable.
+          //  The assignment token has been seen, so now we are looking
+          //  for the value. This is in the form of a "statement"
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_SEMICOLON ) {
-	    // An end-of-statement token has been seen.
-	    //  Try to "finalize" the statement that was being
-	    //  worked on
-	    //
+            // An end-of-statement token has been seen.
+            //  Try to "finalize" the statement that was being
+            //  worked on
+            //
 
             if ( !statement_parser_finalize_() ) {
 
@@ -1558,12 +1562,12 @@ bool parser_type::parse_char( char c )
 
               // distinguish between copy-to-absolute (for globals)
               //  vs copy-to-stack (for stack-local). Emit the
-	      //  appropriate instruction for the relevant case
-	      //
-	      // TODO? replace usage of current_new_var_idx_.back()
-	      //  with something else more lightweight. This appears
-	      //  to be the only "usage" of current_new_var_idx_
-	      //  that doesn't involve it going into the symbol table
+              //  appropriate instruction for the relevant case
+              //
+              // TODO? replace usage of current_new_var_idx_.back()
+              //  with something else more lightweight. This appears
+              //  to be the only "usage" of current_new_var_idx_
+              //  that doesn't involve it going into the symbol table
               //
               if ( symbol_table_.size() == 1 ) {
                 statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_COPYTOADDR ) );
@@ -1574,9 +1578,9 @@ bool parser_type::parse_char( char c )
                 statements_.back().arg.i32    = current_new_var_idx_.back();
               }
 
-	      // The value evaluated for this is on the top of the d-stack;
-	      // emit the instruction to clear it
-	      //
+              // The value evaluated for this is on the top of the d-stack;
+              // emit the instruction to clear it
+              //
               statements_.push_back( instruction_type( INSTRUCTION_ID_TYPE_CLEAR ) );
 
               grammar_state_.back().mode = GRAMMAR_MODE_STATEMENT_START;
@@ -1586,8 +1590,8 @@ bool parser_type::parse_char( char c )
           }
           else {
 
-	    // Pass this token into the "statement" parser
-	    //
+            // Pass this token into the "statement" parser
+            //
             if ( !statement_parser_( last_token ) ) {
 
               grammar_state_.back().mode = GRAMMAR_MODE_ERROR;
@@ -1598,10 +1602,10 @@ bool parser_type::parse_char( char c )
           break;
           
         case GRAMMAR_MODE_BRANCH_STATEMENT:
-	  // We are processing some kind of branching construct (if, while).
-	  //  Expect a parenthesis to begin the expression that will
-	  //  control the branching...
-	  //
+          // We are processing some kind of branching construct (if, while).
+          //  Expect a parenthesis to begin the expression that will
+          //  control the branching...
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_LPARENS ) {
 
@@ -1616,15 +1620,15 @@ bool parser_type::parse_char( char c )
           break;
 
         case GRAMMAR_MODE_BRANCH_EXPRESSION:
-	  // We are processing an expression that is controlling a branch
-	  //  instruction
-	  //
+          // We are processing an expression that is controlling a branch
+          //  instruction
+          //
 
           if ( last_token.id == TOKEN_ID_TYPE_RPARENS && lparens_.empty() ) {
-	    // A right parens has been seen that does not balance
-	    //  an "interior" left-parens; this marks the end of this branch
-	    //  expression
-	    //
+            // A right parens has been seen that does not balance
+            //  an "interior" left-parens; this marks the end of this branch
+            //  expression
+            //
 
             if ( parse_mode_ == PARSE_MODE_START ) {
               std::cerr << "ERROR: empty if () expression\n";
@@ -1642,28 +1646,28 @@ bool parser_type::parse_char( char c )
             // our stack-based evaluation?
             //
 
-	    // Save off the current location in the instruction stream;
-	    //  we will need to "fix up" the jump we are placing here,
-	    //  to jump over the entire block which follows, if this
-	    //  branch expression fails
-	    //
+            // Save off the current location in the instruction stream;
+            //  we will need to "fix up" the jump we are placing here,
+            //  to jump over the entire block which follows, if this
+            //  branch expression fails
+            //
             grammar_state_.back().jump_offset = statements_.size();
 
-	    // Emit the conditional jump
-	    //
+            // Emit the conditional jump
+            //
             statements_.emplace_back( instruction_type( INSTRUCTION_ID_TYPE_JCEQZ ) );
 
-	    // "Notify" the current grammar parse state that we are going inside
-	    //  a branch clause block, and push a new grammar parse state onto the
-	    //  parser stack
-	    //
+            // "Notify" the current grammar parse state that we are going inside
+            //  a branch clause block, and push a new grammar parse state onto the
+            //  parser stack
+            //
             grammar_state_.back().mode = GRAMMAR_MODE_BRANCH_CLAUSE;
             grammar_state_.emplace_back( grammar_state_type( GRAMMAR_MODE_STATEMENT_START, curly_braces_, grammar_state_.back().unreachable_code ) );
 
           }
           else if ( !statement_parser_( last_token ) ) {
-	    // An error was encountered while parsing this branch expression
-	    //
+            // An error was encountered while parsing this branch expression
+            //
 
             std::cerr << "ERROR(2): parse error on character " << c << "\n";
             grammar_state_.back().mode = GRAMMAR_MODE_ERROR;

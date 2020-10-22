@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Ray Li
+ * Copyright 2019-2020 Ray Li
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,24 +23,15 @@
 #pragma once
 
 enum symbol_type {
-  SYMBOL_TYPE_VARIABLE
+   SYMBOL_TYPE_VARIABLE
   ,SYMBOL_TYPE_FUNCTION
 };
 
 struct symbol_table_data_type {
-  symbol_table_data_type()
-    :addr( 0U )
-    ,fn_nargs( 0U )
-    ,fn_ret_size( 0U )
-    ,sfb_offset( 0 )
-    ,is_abs( false )
-    ,type( SYMBOL_TYPE_VARIABLE )
-  {}
-
-  size_t      addr;
-  size_t      fn_nargs;
-  size_t      fn_ret_size;
-  int32_t     sfb_offset;
-  bool        is_abs;
-  symbol_type type;
+  size_t      addr{};
+  size_t      fn_nargs{};
+  size_t      fn_ret_size{};
+  int32_t     sfb_offset{};
+  bool        is_abs{};
+  symbol_type type{ SYMBOL_TYPE_VARIABLE };
 };

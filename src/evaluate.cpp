@@ -28,31 +28,31 @@
 namespace {
 
   enum operand_type {
-    OPERAND_TYPE_DOUBLE
+     OPERAND_TYPE_DOUBLE
     ,OPERAND_TYPE_INT32
     ,OPERAND_TYPE_SIZET
   };
-  
+
   struct operand_data_type {
     explicit operand_data_type( double in_value )
-      :value( in_value )
-      ,ivalue( 0 )
-      ,addr( 0U )
-      ,type( OPERAND_TYPE_DOUBLE )
+      :value{ in_value }
+      ,ivalue{}
+      ,addr{}
+      ,type{ OPERAND_TYPE_DOUBLE }
     {}
 
     explicit operand_data_type( int32_t in_ivalue )
-      :value( 0. )
-      ,ivalue( in_ivalue )
-      ,addr( 0U )
-      ,type( OPERAND_TYPE_INT32 )
+      :value{}
+      ,ivalue{ in_ivalue }
+      ,addr{}
+      ,type{ OPERAND_TYPE_INT32 }
     {}
 
     explicit operand_data_type( size_t in_addr )
-      :value( 0. )
-      ,ivalue( 0 )
-      ,addr( in_addr )
-      ,type( OPERAND_TYPE_SIZET )
+      :value{}
+      ,ivalue{}
+      ,addr{ in_addr }
+      ,type{ OPERAND_TYPE_SIZET }
     {}
 
     void set_value( double in_value )
@@ -60,23 +60,28 @@ namespace {
       value = in_value;
       type  = OPERAND_TYPE_DOUBLE;
     }
-    
+
     double       value;
     int          ivalue;
     size_t       addr;
     operand_type type;
   };
-  
+
 }
 
 
 bool evaluate(
               const std::vector<instruction_type> &instructions
-              ,std::vector<char>                 &data
-              )
+             ,std::vector<char>                   &data
+             )
 {
-  std::vector<std::vector<operand_data_type>> evaluation_stack( 1U );
-  size_t                                      stack_frame_base = 0U;
+  // instructions is the sequence of operands to execute
+  // data is the "data stack" (d-stack)
+
+  // this is the evaluation stack, which holds the "working" state of
+  //  any computations
+  std::vector<std::vector<operand_data_type>> evaluation_stack{ std::vector<operand_data_type> };
+  size_t                                      stack_frame_base{};
 
   size_t instr_index = 0U;
   while ( instr_index < instructions.size() ) {
@@ -87,11 +92,10 @@ bool evaluate(
 
     std::vector<instruction_type>::const_iterator iter = instructions.begin() + instr_index;
 
-    iter_increment = 1;
-    
     switch ( iter->id ) {
     case INSTRUCTION_ID_TYPE_PUSHDOUBLE:
       // PUSH-DOUBLE <double>
+      //  (reqd min size of e-stack, e-stack # of elems popped, e-stack # of elems pushed)
       //  0, -0, +1
       evaluation_stack.back().push_back( operand_data_type( iter->arg.d ) );
       break;
@@ -115,9 +119,10 @@ bool evaluate(
         if ( evaluation_stack.back().empty() ) {
           return false;
         }
-          
+
+        // TODO. type-aware not
         double value = evaluation_stack.back().back().value;
-          
+
         evaluation_stack.back().back().set_value( (value == 0.0) ? 1.0 : 0.0 );
       }
       break;
@@ -129,9 +134,10 @@ bool evaluate(
         if ( evaluation_stack.back().empty() ) {
           return false;
         }
-          
+
+        // TODO. type-aware negate
         double value = evaluation_stack.back().back().value;
-          
+
         evaluation_stack.back().back().set_value( -1.0 * value );
       }
       break;
@@ -143,7 +149,8 @@ bool evaluate(
         if ( evaluation_stack.back().size() < 2 ) {
           return false;
         }
-          
+
+        // TODO. type-aware add
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -161,6 +168,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware subtract
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -179,6 +187,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware divide
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -200,6 +209,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware multiply
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -217,6 +227,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware equality check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -234,6 +245,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware !equality check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -251,6 +263,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware >= check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -268,6 +281,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware > check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -285,6 +299,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware <= check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -302,6 +317,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware < check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         double value2 = (evaluation_stack.back().rbegin()     )->value;
 
@@ -319,6 +335,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware && check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         bool result = ( value1 != 0.0 );
 
@@ -340,6 +357,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware || check
         double value1 = (evaluation_stack.back().rbegin() + 1U)->value;
         bool result = ( value1 != 0.0 );
 
@@ -396,7 +414,7 @@ bool evaluate(
         evaluation_stack.back().clear();
       }
       break;
-      
+
     case INSTRUCTION_ID_TYPE_POP:
       // OP-POP <narg>
       //  narg, -narg, +0
@@ -420,6 +438,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware JNEZ
         double value = (evaluation_stack.back().rbegin())->value;
 
         if ( value != 0.0 ) {
@@ -436,6 +455,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware JEQZ
         double value = (evaluation_stack.back().rbegin())->value;
         if ( value == 0.0 ) {
           iter_increment = iter->arg.i32;
@@ -451,6 +471,7 @@ bool evaluate(
           return false;
         }
 
+        // TODO. type-aware JCEQZ
         double value = (evaluation_stack.back().rbegin())->value;
 
         if ( value == 0.0 ) {
@@ -552,7 +573,7 @@ bool evaluate(
         data.resize( data.size() + 8U );
         *(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) = instr_index + 1U;
         std::cout << "pushing return addr : " << *(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) << "\n";
-        
+
         // push current stack frame base onto stack
         data.resize( data.size() + 8U );
         *(reinterpret_cast<size_t*>( &(data[data.size()-8U]) )) = stack_frame_base;
@@ -575,11 +596,11 @@ bool evaluate(
         jump_absolute = true;
       }
       break;
-      
+
     case INSTRUCTION_ID_TYPE_RETURN:
       {
         std::cout << "=====RETURN=====\n";
-        
+
         size_t old_stack_frame_base = *(reinterpret_cast<size_t*>(&(data[stack_frame_base -  8])));
         std::cout << "debug: setting stack frame base to " << old_stack_frame_base << "\n";
         size_t return_address       = *(reinterpret_cast<size_t*>(&(data[stack_frame_base - 16])));

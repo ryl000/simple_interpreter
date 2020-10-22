@@ -1,0 +1,15 @@
+sinterp.out: evaluate.o parser_type.o main.o
+	clang++ -g -Wall -Wextra -o sinterp.out main.o evaluate.o parser_type.o
+
+.PHONY: clean
+clean:
+	rm -f *.o sinterp.out
+
+evaluate.o : src/evaluate.cpp
+	clang++ -g -Wall -Wextra -std=c++14 -c src/evaluate.cpp
+
+main.o : src/main.cpp
+	clang++ -g -Wall -Wextra -std=c++14 -c src/main.cpp
+
+parser_type.o : src/parser_type.cpp
+	clang++ -g -Wall -Wextra -std=c++14 -c src/parser_type.cpp
